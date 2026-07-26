@@ -86,6 +86,51 @@ def test_parse_uploaded_analysis_workspace():
     assert len(data["parsed_json"]["lab_results"]) >= 3
     assert data["cleaned_text"]
 
+
+def test_analyze_parsed_analysis_workspace():
+    create_res = client.post("/api/v1/analysis/create", data={"title": "Analyze Test Session"})
+    assert create_res.status_code == 200
+    analysis_id = create_res.json()["data"]["analysis_id"]
+
+    file_content = (
+        b"Patient Name: Rahul Sharma\n"
+        b"Age: 32\n"
+        b"Gender: Male\n"
+        b"Complete Blood Count Report\n"
+        b"Hemoglobin 10.2 g/dL 13.5-17.5\n"
+        b"WBC 6200 cells/uL 4000-11000\n"
+        b"Platelets 250000 cells/uL 150000-450000\n"
+    )
+    files = {"file": ("cbc_report.pdf", file_content, "application/pdf")}
+    upload_res = client.post(f"/api/v1/analysis/{analysis_id}/upload", files=files)
+    assert upload_res.status_code == 200
+
+    parse_res = client.post(f"/api/v1/analysis/{analysis_id}/parse")
+    assert parse_res.status_code == 200
+
+    analyze_res = client.post(f"/api/v1/analysis/{analysis_id}/analyze")
+    assert analyze_res.status_code == 200
+    body = analyze_res.json()
+    assert body["success"] is True
+    data = body["data"]
+    assert data["status"] == "completed"
+    assert data["summary_report"]
+    assert data["validation_status"]["passed"] is True
+    assert data["execution_log"]
+
+
+def test_analysis_progress_endpoint_returns_stage_information():
+    create_res = client.post("/api/v1/analysis/create", data={"title": "Progress Test Session"})
+    assert create_res.status_code == 200
+    analysis_id = create_res.json()["data"]["analysis_id"]
+
+    progress_res = client.get(f"/api/v1/analysis/{analysis_id}/progress")
+    assert progress_res.status_code == 200
+    body = progress_res.json()
+    assert body["success"] is True
+    assert body["data"]["analysis_id"] == analysis_id
+    assert body["data"]["current_stage"] == "created"
+
 def test_quick_start_analysis():
     file_content = b"Quick Start Report Content."
     files = {"file": ("quick_report.pdf", file_content, "application/pdf")}

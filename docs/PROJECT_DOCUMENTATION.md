@@ -156,7 +156,7 @@ The parser extracts **objective data only** (`test_name`, `value`, `unit`, `refe
 
 ---
 
-### Module 3: Structured Reasoning Graph (Sprint 3) - IN PROGRESS
+### Module 3: Structured Reasoning Graph (Sprint 3) - IMPLEMENTED
 
 #### 1. Purpose
 Convert structured medical facts into deterministic reasoning outputs before any natural-language response is generated.
@@ -203,9 +203,12 @@ Convert structured medical facts into deterministic reasoning outputs before any
 
 #### 6. Development Status
 - `GraphState` defined.
-- `Supervisor` scaffolded.
+- `Supervisor` implemented.
 - `Anomaly Agent` implemented.
-- `Risk Agent` in progress.
-- `Consult Agent` in progress.
-- `Summary Agent` in progress.
-- `Validation Agent` in progress.
+- `Risk Agent` implemented.
+- `Consult Agent` implemented.
+- `Summary Agent` implemented with Groq-backed generation and deterministic fallback.
+- `Validation Agent` implemented.
+- `/analysis/{analysis_id}/analyze` runs the structured reasoning workflow.
+- `/analysis/{analysis_id}/progress` exposes the current stage and execution log.
+- Frontend dashboard shows sprint roadmap, parse/analyze actions, and progress snapshots.

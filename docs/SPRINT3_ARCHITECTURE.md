@@ -4,6 +4,13 @@
 
 Sprint 3 turns the parsed medical JSON from Sprint 2 into structured reasoning output. The parser remains the source of facts; the graph only interprets and summarizes those facts.
 
+The implementation now includes a dedicated analysis endpoint and a progress endpoint:
+
+- `POST /api/v1/analysis/{analysis_id}/analyze`
+- `GET /api/v1/analysis/{analysis_id}/progress`
+
+The summary step uses Groq when `GROQ_API_KEY` is configured and falls back to a deterministic grounded summary when it is not available or when a validation retry is required.
+
 ## Shared State
 
 The graph should pass one shared state object through every node.
@@ -126,6 +133,13 @@ The prompt layer should be added after the graph contract is stable.
 - `summary_prompt.py`
 
 These files should describe behavior, not implementation details.
+
+## Runtime Configuration
+
+- `LLM_PROVIDER=groq`
+- `GROQ_API_KEY`
+- `GROQ_BASE_URL=https://api.groq.com/openai/v1`
+- `GROQ_MODEL=llama-3.1-70b-versatile`
 
 ## UI Progress States
 

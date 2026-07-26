@@ -64,6 +64,60 @@ async def parse_report_in_workspace(analysis_id: str):
             details=str(e)
         )
 
+@router.post("/{analysis_id}/analyze")
+async def analyze_report_in_workspace(analysis_id: str):
+    try:
+        updated_session = await AnalysisService.analyze_session_document(analysis_id)
+        return success_response(
+            data=updated_session,
+            message=f"Medical report analyzed successfully for workspace '{analysis_id}'."
+        )
+    except HTTPException as he:
+        return error_response(
+            message=he.detail,
+            code="ANALYZE_HTTP_ERROR"
+        )
+    except Exception as e:
+        logger.error(f"Error analyzing report in workspace {analysis_id}: {e}", exc_info=True)
+        return error_response(
+            message="Document analysis failed.",
+            code="DOCUMENT_ANALYZE_FAILED",
+            details=str(e)
+        )
+
+@router.get("/{analysis_id}/progress")
+async def get_analysis_progress(analysis_id: str):
+    try:
+        session = await AnalysisService.get_session_by_id(analysis_id)
+        if not session:
+            return error_response(
+                message=f"Analysis workspace '{analysis_id}' not found.",
+                code="WORKSPACE_NOT_FOUND"
+            )
+
+        execution_log = session.get("execution_log") or []
+        current_stage = execution_log[-1]["stage"] if execution_log else session.get("status", "created")
+        return success_response(
+            data={
+                "analysis_id": analysis_id,
+                "status": session.get("status"),
+                "current_stage": current_stage,
+                "execution_log": execution_log,
+                "risk_assessment": session.get("risk_assessment"),
+                "consultation_advice": session.get("consultation_advice"),
+                "validation_status": session.get("validation_status"),
+                "summary_report": session.get("summary_report"),
+            },
+            message="Analysis progress retrieved successfully."
+        )
+    except Exception as e:
+        logger.error(f"Error retrieving analysis progress for {analysis_id}: {e}", exc_info=True)
+        return error_response(
+            message="Failed to retrieve analysis progress.",
+            code="PROGRESS_LOOKUP_FAILED",
+            details=str(e)
+        )
+
 @router.post("/quick-start")
 async def quick_start_analysis(
     file: UploadFile = File(...),

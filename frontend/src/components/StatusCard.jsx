@@ -3,6 +3,7 @@ import { Layers, Cpu, Database, Workflow } from 'lucide-react';
 
 export const StatusCard = ({ totalWorkspaces, healthStatus, sessions = [] }) => {
   const parsedCount = sessions.filter((session) => session.status === 'parsed').length;
+  const analyzedCount = sessions.filter((session) => ['analyzing', 'validated', 'completed'].includes(session.status)).length;
   const activeCount = sessions.filter((session) => ['uploaded', 'parsing', 'analyzing'].includes(session.status)).length;
 
   return (
@@ -22,8 +23,8 @@ export const StatusCard = ({ totalWorkspaces, healthStatus, sessions = [] }) => 
           <Cpu size={26} />
         </div>
         <div>
-          <div className="metric-val">Sprint 3</div>
-          <div className="metric-label">Structured reasoning in progress</div>
+          <div className="metric-val">{analyzedCount}</div>
+          <div className="metric-label">Reasoned workspaces</div>
         </div>
       </div>
 

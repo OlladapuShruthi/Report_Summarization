@@ -32,9 +32,10 @@ class AnalysisSessionResponse(AnalysisSessionBase):
     parser_metadata: Optional[Dict[str, Any]] = None
     abnormal_findings: Optional[List[Dict[str, Any]]] = None
     risk_assessment: Optional[Dict[str, Any]] = None
-    consultation_advice: Optional[str] = None
+    consultation_advice: Optional[Dict[str, Any]] = None
     summary_report: Optional[str] = None
     validation_status: Optional[Dict[str, Any]] = None
+    execution_log: Optional[List[Dict[str, Any]]] = None
     retry_count: int = 0
     created_at: str
     updated_at: Optional[str] = None

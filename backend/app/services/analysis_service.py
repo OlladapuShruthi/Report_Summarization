@@ -8,6 +8,7 @@ from app.analysis.parser.parsing_service import ParsingService
 from app.models.analysis_session import PipelineStatus
 from app.utils.file_handler import save_uploaded_file
 from app.core.logger import logger
+from app.graph.runtime import GraphRuntime
 
 # In-memory session store fallback if Mongo Atlas connection is degraded
 in_memory_sessions: Dict[str, Dict[str, Any]] = {}
@@ -35,6 +36,7 @@ class AnalysisService:
             "summary_report": None,
             "validation_status": None,
             "retry_count": 0,
+            "execution_log": [],
             "created_at": now,
             "updated_at": now
         }
@@ -78,6 +80,7 @@ class AnalysisService:
         update_fields = {
             "document_info": doc_record,
             "status": PipelineStatus.UPLOADED.value,
+            "execution_log": AnalysisService._append_execution_event(session, "document_uploaded", "executed", saved_file["original_filename"]),
             "updated_at": now
         }
 
@@ -116,6 +119,7 @@ class AnalysisService:
             analysis_id,
             {
                 "status": PipelineStatus.PARSING.value,
+                "execution_log": AnalysisService._append_execution_event(session, "parsing_started", "executed"),
                 "updated_at": datetime.utcnow().isoformat(),
             },
         )
@@ -128,6 +132,7 @@ class AnalysisService:
                 "parsed_json": parsing_result.parsed_json,
                 "parser_metadata": parsing_result.parser_metadata,
                 "status": PipelineStatus.PARSED.value,
+                "execution_log": AnalysisService._append_execution_event(session, "parsed", "executed"),
                 "updated_at": datetime.utcnow().isoformat(),
             }
             await AnalysisService._update_session_fields(analysis_id, update_fields)
@@ -142,6 +147,63 @@ class AnalysisService:
             await AnalysisService._update_session_fields(analysis_id, failure_fields)
             logger.error(f"Parsing failed for workspace {analysis_id}: {exc}", exc_info=True)
             raise
+
+    @staticmethod
+    async def analyze_session_document(analysis_id: str) -> Dict[str, Any]:
+        session = await AnalysisService.get_session_by_id(analysis_id)
+        if not session:
+            raise HTTPException(status_code=404, detail=f"Analysis session '{analysis_id}' not found.")
+
+        parsed_json = session.get("parsed_json")
+        if not parsed_json:
+            raise HTTPException(status_code=400, detail="Parse the uploaded document before analysis.")
+
+        await AnalysisService._update_session_fields(
+            analysis_id,
+            {
+                "status": PipelineStatus.ANALYZING.value,
+                "execution_log": AnalysisService._append_execution_event(session, "analysis_started", "executed"),
+                "updated_at": datetime.utcnow().isoformat(),
+            },
+        )
+
+        async def persist_graph_state(graph_state: Dict[str, Any]) -> None:
+            consultation_block = graph_state.get("consultation") or {}
+            summary_block = graph_state.get("summary") or {}
+            validation_block = graph_state.get("validation") or {}
+            update_fields = {
+                "abnormal_findings": graph_state.get("abnormal_findings"),
+                "risk_assessment": graph_state.get("risk_assessment"),
+                "consultation_advice": consultation_block,
+                "summary_report": summary_block.get("text"),
+                "validation_status": validation_block,
+                "retry_count": graph_state.get("retry_count", 0),
+                "execution_log": graph_state.get("execution_log", []),
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+            await AnalysisService._update_session_fields(analysis_id, update_fields)
+
+        final_state = await GraphRuntime().execute(
+            analysis_id=analysis_id,
+            parsed_json=parsed_json,
+            state_callback=persist_graph_state,
+            patient_metadata=(parsed_json or {}).get("patient_metadata") or {},
+        )
+
+        update_fields = {
+            "status": final_state.get("status", PipelineStatus.ANALYZING.value),
+            "abnormal_findings": final_state.get("abnormal_findings"),
+            "risk_assessment": final_state.get("risk_assessment"),
+            "consultation_advice": final_state.get("consultation"),
+            "summary_report": (final_state.get("summary") or {}).get("text"),
+            "validation_status": final_state.get("validation"),
+            "retry_count": final_state.get("retry_count", 0),
+            "execution_log": final_state.get("execution_log", []),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        await AnalysisService._update_session_fields(analysis_id, update_fields)
+        session.update(update_fields)
+        return session
 
     @staticmethod
     async def quick_start_session(file: UploadFile, patient_id: Optional[str] = None, title: Optional[str] = None) -> Dict[str, Any]:
@@ -195,3 +257,16 @@ class AnalysisService:
 
         if analysis_id in in_memory_sessions:
             in_memory_sessions[analysis_id].update(update_fields)
+
+    @staticmethod
+    def _append_execution_event(session: Dict[str, Any], stage: str, status: str, details: Optional[str] = None) -> List[Dict[str, Any]]:
+        execution_log = list(session.get("execution_log") or [])
+        execution_log.append(
+            {
+                "stage": stage,
+                "status": status,
+                "timestamp": datetime.utcnow().isoformat(),
+                "details": details,
+            }
+        )
+        return execution_log

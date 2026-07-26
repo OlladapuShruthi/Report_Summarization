@@ -1,7 +1,7 @@
 import React from 'react';
-import { Layers, FileText, Clock, HardDrive, Play, Loader2, Braces, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Layers, FileText, Clock, HardDrive, Play, Loader2, Braces, CheckCircle2, AlertTriangle, Workflow } from 'lucide-react';
 
-export const DocumentList = ({ sessions, activeParseId, onParse }) => {
+export const DocumentList = ({ sessions, activeParseId, activeAnalyzeId, onParse, onAnalyze }) => {
   const formatSize = (bytes) => {
     if (!bytes) return '0 B';
     const k = 1024;
@@ -44,11 +44,17 @@ export const DocumentList = ({ sessions, activeParseId, onParse }) => {
               const docInfo = session.document_info;
               const status = session.status || 'created';
               const isParsing = activeParseId === session.analysis_id || status === 'parsing';
-              const canParse = Boolean(docInfo) && status !== 'parsed' && !isParsing;
+              const isAnalyzing = activeAnalyzeId === session.analysis_id || status === 'analyzing';
+              const canParse = Boolean(docInfo) && !['parsed', 'analyzing', 'validated', 'completed'].includes(status) && !isParsing;
+              const canAnalyze = Boolean(session.parsed_json) && !['analyzing', 'validated', 'completed'].includes(status) && !isAnalyzing;
               const labCount = session.parsed_json?.lab_results?.length || 0;
               const narrativeCount = session.parsed_json?.narrative_impressions?.length || 0;
               const displayCount = labCount + narrativeCount;
-              const isCompleted = status === 'parsed' || status === 'validated' || status === 'completed';
+              const hasReasoning = Boolean(session.summary_report || session.risk_assessment || session.validation_status);
+              const riskLevel = session.risk_assessment?.risk_level || 'LOW';
+              const consultationRequired = Boolean(session.consultation_advice?.consultation_required);
+              const executionLog = session.execution_log || [];
+              const executionStage = executionLog.length > 0 ? executionLog[executionLog.length - 1]?.stage : status;
 
               return (
                 <tr key={session.analysis_id}>
@@ -72,23 +78,44 @@ export const DocumentList = ({ sessions, activeParseId, onParse }) => {
                   </td>
                   <td>
                     <span className={`status-tag ${status}`}>{status}</span>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#9ca3af' }}>
-                      {isCompleted ? <CheckCircle2 size={14} color="#10b981" /> : <AlertTriangle size={14} color="#f59e0b" />}
-                      <span>{isCompleted ? `${displayCount} structured items` : 'Awaiting parsing'}</span>
+                    <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', color: '#9ca3af', fontSize: '0.82rem' }}>
+                      <Workflow size={14} />
+                      <span>{executionStage}</span>
                     </div>
                   </td>
                   <td>
-                    <button
-                      className="parse-btn"
-                      onClick={() => onParse?.(session.analysis_id)}
-                      disabled={!canParse}
-                      title={canParse ? 'Parse uploaded report' : 'Parsing unavailable'}
-                    >
-                      {isParsing ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
-                      {isParsing ? 'Parsing' : status === 'parsed' ? 'Parsed' : 'Parse'}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#9ca3af' }}>
+                      {hasReasoning ? <CheckCircle2 size={14} color="#10b981" /> : <AlertTriangle size={14} color="#f59e0b" />}
+                      <span>{hasReasoning ? `${displayCount} structured items` : 'Awaiting reasoning'}</span>
+                    </div>
+                    {hasReasoning && (
+                      <div style={{ marginTop: '8px', color: '#cbd5e1', fontSize: '0.82rem', lineHeight: 1.5 }}>
+                        <div>Risk: {riskLevel}</div>
+                        <div>Consult: {consultationRequired ? 'Yes' : 'No'}</div>
+                      </div>
+                    )}
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <button
+                        className="parse-btn"
+                        onClick={() => onParse?.(session.analysis_id)}
+                        disabled={!canParse}
+                        title={canParse ? 'Parse uploaded report' : 'Parsing unavailable'}
+                      >
+                        {isParsing ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
+                        {isParsing ? 'Parsing' : status === 'parsed' ? 'Parsed' : 'Parse'}
+                      </button>
+                      <button
+                        className="analyze-btn"
+                        onClick={() => onAnalyze?.(session.analysis_id)}
+                        disabled={!canAnalyze}
+                        title={canAnalyze ? 'Run structured reasoning' : 'Analysis unavailable'}
+                      >
+                        {isAnalyzing ? <Loader2 size={15} className="animate-spin" /> : <Workflow size={15} />}
+                        {isAnalyzing ? 'Analyzing' : 'Analyze'}
+                      </button>
+                    </div>
                   </td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#9ca3af' }}>

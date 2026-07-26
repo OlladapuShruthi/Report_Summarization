@@ -21,7 +21,10 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 25
 
     # AI & Pipeline Settings
-    LLM_PROVIDER: str = "gemini"
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "groq")
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROQ_BASE_URL: str = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile")
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     VECTOR_DB: str = "faiss"
     DEFAULT_LANGUAGE: str = "en"

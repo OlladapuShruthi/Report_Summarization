@@ -73,4 +73,20 @@ export const parseAnalysisSession = async (analysisId) => {
   throw new Error(response.data?.message || 'Document parsing failed');
 };
 
+export const analyzeAnalysisSession = async (analysisId) => {
+  const response = await api.post(`/analysis/${analysisId}/analyze`);
+  if (response.data && response.data.success) {
+    return response.data.data;
+  }
+  throw new Error(response.data?.message || 'Document analysis failed');
+};
+
+export const fetchAnalysisProgress = async (analysisId) => {
+  const response = await api.get(`/analysis/${analysisId}/progress`);
+  if (response.data && response.data.success) {
+    return response.data.data;
+  }
+  throw new Error(response.data?.message || 'Progress lookup failed');
+};
+
 export default api;
