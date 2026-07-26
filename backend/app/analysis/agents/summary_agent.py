@@ -1,0 +1,11 @@
+from typing import Dict, Any
+from app.analysis.agents.base_agent import BaseAgent
+from app.core.logger import logger
+
+class SummaryAgent(BaseAgent):
+    def __init__(self):
+        super().__init__("SummaryAgent")
+
+    async def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        logger.info(f"[{self.agent_name}] Placeholder process called.")
+        raise NotImplementedError("SummaryAgent reasoning will be implemented in Phase 4.")
