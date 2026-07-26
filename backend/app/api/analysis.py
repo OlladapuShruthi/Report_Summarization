@@ -43,6 +43,27 @@ async def upload_report_to_workspace(analysis_id: str, file: UploadFile = File(.
             details=str(e)
         )
 
+@router.post("/{analysis_id}/parse")
+async def parse_report_in_workspace(analysis_id: str):
+    try:
+        updated_session = await AnalysisService.parse_session_document(analysis_id)
+        return success_response(
+            data=updated_session,
+            message=f"Medical report parsed successfully for workspace '{analysis_id}'."
+        )
+    except HTTPException as he:
+        return error_response(
+            message=he.detail,
+            code="PARSE_HTTP_ERROR"
+        )
+    except Exception as e:
+        logger.error(f"Error parsing report in workspace {analysis_id}: {e}", exc_info=True)
+        return error_response(
+            message="Document parsing failed.",
+            code="DOCUMENT_PARSE_FAILED",
+            details=str(e)
+        )
+
 @router.post("/quick-start")
 async def quick_start_analysis(
     file: UploadFile = File(...),

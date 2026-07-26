@@ -3,11 +3,12 @@ import { Header } from './components/Header';
 import { StatusCard } from './components/StatusCard';
 import { UploadCard } from './components/UploadCard';
 import { DocumentList } from './components/DocumentList';
-import { checkHealth, fetchAnalysisSessions } from './services/api';
+import { checkHealth, fetchAnalysisSessions, parseAnalysisSession } from './services/api';
 
 export function App() {
   const [healthStatus, setHealthStatus] = useState(null);
   const [sessions, setSessions] = useState([]);
+  const [activeParseId, setActiveParseId] = useState(null);
 
   const loadData = async () => {
     const health = await checkHealth();
@@ -23,6 +24,16 @@ export function App() {
     return () => clearInterval(interval);
   }, []);
 
+  const handleParse = async (analysisId) => {
+    setActiveParseId(analysisId);
+    try {
+      await parseAnalysisSession(analysisId);
+      await loadData();
+    } finally {
+      setActiveParseId(null);
+    }
+  };
+
   return (
     <div className="app-container">
       <Header healthStatus={healthStatus} />
@@ -34,7 +45,11 @@ export function App() {
 
       <UploadCard onUploadSuccess={loadData} />
 
-      <DocumentList sessions={sessions} />
+      <DocumentList
+        sessions={sessions}
+        activeParseId={activeParseId}
+        onParse={handleParse}
+      />
     </div>
   );
 }

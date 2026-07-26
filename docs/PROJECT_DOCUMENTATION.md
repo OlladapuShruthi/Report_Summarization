@@ -60,7 +60,7 @@ Below is the complete layered technical workflow for the AI Medical Report Assis
 
 ---
 
-### Module 2: Objective Medical Facts Parser (Sprint 2) - 📐 DESIGN FROZEN
+### Module 2: Objective Medical Facts Parser (Sprint 2) - IMPLEMENTED
 
 #### 1. Purpose
 Extract raw text and objective clinical facts from uploaded report PDFs and images, classify report type, and assemble a standardized **Medical Facts JSON v1.0** contract for downstream LangGraph agents.
@@ -130,6 +130,17 @@ The parser extracts **objective data only** (`test_name`, `value`, `unit`, `refe
 }
 ```
 
+#### 5. Implemented Sprint 2 Pipeline
+- Parser package: `backend/app/analysis/parser/`
+- Text extraction: digital PDF extraction with OCR fallback hooks.
+- Cleaning: whitespace, repeated page markers, and unit normalization.
+- Classification: keyword-based CBC, thyroid, lipid, LFT, KFT, radiology, discharge summary, and unknown routing.
+- Structuring: deterministic lab fact extraction plus narrative section extraction.
+- Validation: Pydantic Medical JSON v1.0 validator.
+- Orchestration: `ParsingService.parse_document()` produces `raw_text`, `cleaned_text`, `parsed_json`, and `parser_metadata`.
+- API integration: `POST /api/v1/analysis/{analysis_id}/parse` updates status from `uploaded` to `parsing` to `parsed`.
+- Frontend: workspace table includes a Parse action and parsed fact count.
+
 ---
 
 ## 🛠️ Step-by-Step Change Log
@@ -139,3 +150,4 @@ The parser extracts **objective data only** (`test_name`, `value`, `unit`, `refe
 | **2026-07-26** | Module 1 | Created Monorepo structure, living technical documentation (`docs/PROJECT_DOCUMENTATION.md`), FastAPI backend structure, MongoDB connector, React + Vite frontend dashboard, and file upload API. | Antigravity AI |
 | **2026-07-26** | Module 1 (Refinement) | Upgraded to **Analysis Workspace Architecture** (`analysis_sessions`), connected to **MongoDB Atlas (`Mreport`)**, introduced standardized `APIResponse` wrappers, centralized logging to `logs/application.log`, mode-based directory layout (`analysis`, `conversation`, `reassessment`), and AI placeholders. All 5 automated unit tests passed. Pushed to GitHub. | Antigravity AI |
 | **2026-07-26** | Module 2 (Design) | Verified all 4 Sprint 1 foundation checks (live MongoDB Atlas record creation confirmed). Created and froze **Module 2 Design Specification (Parsing Layer, Medical Facts Contract, pipeline_id, processing_log, Report Type Catalogue, Parser Decision Matrix, Medical Facts JSON v1.0 Schema)**. | Antigravity AI |
+| **2026-07-26** | Module 2 (Implementation) | Implemented Sprint 2 parsing pipeline, parse API endpoint, MongoDB/in-memory persistence fields, frontend parse action, and parser/API tests. | Codex |

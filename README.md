@@ -4,7 +4,7 @@ An industry-grade, multi-agent AI system designed to analyze, summarize, extract
 
 ---
 
-## 🚀 Quick Start (Sprint 1 / Phase 1)
+## 🚀 Quick Start (Sprint 2)
 
 ### Prerequisites
 - **Python 3.10+**
@@ -31,6 +31,14 @@ uvicorn main:app --reload --port 8000
 ```
 FastAPI server running at: `http://localhost:8000`  
 Swagger API Docs available at: `http://localhost:8000/docs`
+
+Sprint 2 parse endpoint:
+
+```bash
+POST /api/v1/analysis/{analysis_id}/parse
+```
+
+The endpoint reads the uploaded report, extracts objective facts, validates Medical JSON v1.0, and updates the workspace status to `parsed`.
 
 ---
 

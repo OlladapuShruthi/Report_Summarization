@@ -4,6 +4,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import UploadFile, HTTPException
 
 from app.database.mongodb import get_database
+from app.analysis.parser.parsing_service import ParsingService
 from app.models.analysis_session import PipelineStatus
 from app.utils.file_handler import save_uploaded_file
 from app.core.logger import logger
@@ -24,7 +25,10 @@ class AnalysisService:
             "title": title or "Clinical Analysis Session",
             "status": PipelineStatus.CREATED.value,
             "document_info": None,
+            "raw_text": None,
+            "cleaned_text": None,
             "parsed_json": None,
+            "parser_metadata": None,
             "abnormal_findings": None,
             "risk_assessment": None,
             "consultation_advice": None,
@@ -99,6 +103,47 @@ class AnalysisService:
         return session
 
     @staticmethod
+    async def parse_session_document(analysis_id: str) -> Dict[str, Any]:
+        session = await AnalysisService.get_session_by_id(analysis_id)
+        if not session:
+            raise HTTPException(status_code=404, detail=f"Analysis session '{analysis_id}' not found.")
+
+        document_info = session.get("document_info")
+        if not document_info or not document_info.get("file_path"):
+            raise HTTPException(status_code=400, detail="No uploaded document found for this analysis session.")
+
+        await AnalysisService._update_session_fields(
+            analysis_id,
+            {
+                "status": PipelineStatus.PARSING.value,
+                "updated_at": datetime.utcnow().isoformat(),
+            },
+        )
+
+        try:
+            parsing_result = ParsingService().parse_document(document_info["file_path"])
+            update_fields = {
+                "raw_text": parsing_result.raw_text,
+                "cleaned_text": parsing_result.cleaned_text,
+                "parsed_json": parsing_result.parsed_json,
+                "parser_metadata": parsing_result.parser_metadata,
+                "status": PipelineStatus.PARSED.value,
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+            await AnalysisService._update_session_fields(analysis_id, update_fields)
+            session.update(update_fields)
+            return session
+        except Exception as exc:
+            failure_fields = {
+                "status": PipelineStatus.FAILED.value,
+                "parser_metadata": {"error": str(exc)},
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+            await AnalysisService._update_session_fields(analysis_id, failure_fields)
+            logger.error(f"Parsing failed for workspace {analysis_id}: {exc}", exc_info=True)
+            raise
+
+    @staticmethod
     async def quick_start_session(file: UploadFile, patient_id: Optional[str] = None, title: Optional[str] = None) -> Dict[str, Any]:
         # Convenience endpoint: create workspace & upload document in one step
         title = title or f"Analysis - {file.filename}"
@@ -135,3 +180,18 @@ class AnalysisService:
 
         # Fallback in-memory sessions
         return sorted(list(in_memory_sessions.values()), key=lambda x: x["created_at"], reverse=True)
+
+    @staticmethod
+    async def _update_session_fields(analysis_id: str, update_fields: Dict[str, Any]) -> None:
+        db = get_database()
+        if db is not None:
+            try:
+                await db.analysis_sessions.update_one(
+                    {"analysis_id": analysis_id},
+                    {"$set": update_fields},
+                )
+            except Exception as exc:
+                logger.warning(f"MongoDB session update failed for {analysis_id}: {exc}")
+
+        if analysis_id in in_memory_sessions:
+            in_memory_sessions[analysis_id].update(update_fields)

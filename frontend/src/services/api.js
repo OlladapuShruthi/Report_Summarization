@@ -4,7 +4,7 @@ const API_BASE_URL = 'http://localhost:8000/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000,
+  timeout: 30000,
 });
 
 export const checkHealth = async () => {
@@ -63,6 +63,14 @@ export const fetchAnalysisSessions = async () => {
     console.error('Failed to fetch analysis sessions:', error);
     return [];
   }
+};
+
+export const parseAnalysisSession = async (analysisId) => {
+  const response = await api.post(`/analysis/${analysisId}/parse`);
+  if (response.data && response.data.success) {
+    return response.data.data;
+  }
+  throw new Error(response.data?.message || 'Document parsing failed');
 };
 
 export default api;

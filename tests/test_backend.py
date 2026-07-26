@@ -54,6 +54,32 @@ def test_create_and_upload_analysis_workspace():
     assert get_body["success"] is True
     assert get_body["data"]["analysis_id"] == analysis_id
 
+def test_parse_uploaded_analysis_workspace():
+    create_res = client.post("/api/v1/analysis/create", data={"title": "Parse Test Session"})
+    assert create_res.status_code == 200
+    analysis_id = create_res.json()["data"]["analysis_id"]
+
+    file_content = (
+        b"Complete Blood Count Report\n"
+        b"Hemoglobin 10.2 g/dL 13.5-17.5\n"
+        b"WBC 6200 cells/uL 4000-11000\n"
+        b"Platelets 250000 cells/uL 150000-450000\n"
+    )
+    files = {"file": ("cbc_report.pdf", file_content, "application/pdf")}
+    upload_res = client.post(f"/api/v1/analysis/{analysis_id}/upload", files=files)
+    assert upload_res.status_code == 200
+
+    parse_res = client.post(f"/api/v1/analysis/{analysis_id}/parse")
+    assert parse_res.status_code == 200
+    body = parse_res.json()
+    assert body["success"] is True
+    data = body["data"]
+    assert data["status"] == "parsed"
+    assert data["parsed_json"]["schema_version"] == "1.0"
+    assert data["parsed_json"]["report_type"] == "LAB_REPORT_CBC"
+    assert len(data["parsed_json"]["lab_results"]) >= 3
+    assert data["cleaned_text"]
+
 def test_quick_start_analysis():
     file_content = b"Quick Start Report Content."
     files = {"file": ("quick_report.pdf", file_content, "application/pdf")}

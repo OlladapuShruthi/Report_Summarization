@@ -1,7 +1,7 @@
 import React from 'react';
-import { Layers, FileText, Clock, HardDrive } from 'lucide-react';
+import { Layers, FileText, Clock, HardDrive, Play, Loader2, Braces } from 'lucide-react';
 
-export const DocumentList = ({ sessions }) => {
+export const DocumentList = ({ sessions, activeParseId, onParse }) => {
   const formatSize = (bytes) => {
     if (!bytes) return '0 B';
     const k = 1024;
@@ -34,6 +34,8 @@ export const DocumentList = ({ sessions }) => {
               <th>Report / Document</th>
               <th>File Size</th>
               <th>Pipeline Status</th>
+              <th>Parsed Facts</th>
+              <th>Action</th>
               <th>Created At</th>
             </tr>
           </thead>
@@ -41,6 +43,10 @@ export const DocumentList = ({ sessions }) => {
             {sessions.map((session) => {
               const docInfo = session.document_info;
               const status = session.status || 'created';
+              const isParsing = activeParseId === session.analysis_id || status === 'parsing';
+              const canParse = Boolean(docInfo) && status !== 'parsed' && !isParsing;
+              const labCount = session.parsed_json?.lab_results?.length || 0;
+              const narrativeCount = session.parsed_json?.narrative_impressions?.length || 0;
 
               return (
                 <tr key={session.analysis_id}>
@@ -64,6 +70,23 @@ export const DocumentList = ({ sessions }) => {
                   </td>
                   <td>
                     <span className={`status-tag ${status}`}>{status}</span>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#9ca3af' }}>
+                      <Braces size={14} />
+                      <span>{status === 'parsed' ? `${labCount + narrativeCount} items` : 'Not parsed'}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <button
+                      className="parse-btn"
+                      onClick={() => onParse?.(session.analysis_id)}
+                      disabled={!canParse}
+                      title={canParse ? 'Parse uploaded report' : 'Parsing unavailable'}
+                    >
+                      {isParsing ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
+                      {isParsing ? 'Parsing' : status === 'parsed' ? 'Parsed' : 'Parse'}
+                    </button>
                   </td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#9ca3af' }}>

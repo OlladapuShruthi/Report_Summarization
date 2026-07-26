@@ -26,7 +26,10 @@ class AnalysisSessionResponse(AnalysisSessionBase):
     analysis_id: str
     status: str
     document_info: Optional[Dict[str, Any]] = None
+    raw_text: Optional[str] = None
+    cleaned_text: Optional[str] = None
     parsed_json: Optional[Dict[str, Any]] = None
+    parser_metadata: Optional[Dict[str, Any]] = None
     abnormal_findings: Optional[List[Dict[str, Any]]] = None
     risk_assessment: Optional[Dict[str, Any]] = None
     consultation_advice: Optional[str] = None
