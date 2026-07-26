@@ -6,6 +6,8 @@ if backend_path not in sys.path:
     sys.path.insert(0, backend_path)
 
 from app.analysis.parser.deterministic_parser import DeterministicParser
+from app.analysis.parser.json_builder import MedicalJSONBuilder
+from app.analysis.parser.patient_metadata_extractor import PatientMetadataExtractor
 from app.analysis.parser.parsing_service import ParsingService
 from app.analysis.parser.report_classifier import ReportClassifier
 from app.analysis.parser.text_cleaner import TextCleaner
@@ -32,7 +34,16 @@ def test_deterministic_parser_extracts_lab_values():
     assert len(results) == 2
     assert results[0]["test_name"] == "Hemoglobin"
     assert results[0]["value"] == 10.2
-    assert results[0]["reference_range"] == {"low": 13.5, "high": 17.5}
+    assert results[0]["reference_range"] == {"low": 13.5, "high": 17.5, "text": "13.5 - 17.5"}
+    assert results[0]["category"] == "Hematology"
+    assert results[0]["is_outside_reference"] is True
+
+
+def test_patient_metadata_extractor_reads_demographics():
+    text = "Patient Name: Rahul Sharma\nAge: 32\nGender: Male\nComplete Blood Count"
+    metadata = PatientMetadataExtractor().extract(text)
+
+    assert metadata == {"name": "Rahul Sharma", "age": 32, "gender": "Male"}
 
 
 def test_medical_json_validator_accepts_schema_v1():
@@ -40,9 +51,23 @@ def test_medical_json_validator_accepts_schema_v1():
         "schema_version": "1.0",
         "report_type": "LAB_REPORT_CBC",
         "patient_metadata": {},
-        "lab_results": [{"test_name": "Hemoglobin", "value": 10.2, "unit": "g/dL"}],
+        "lab_results": [
+            {
+                "test_name": "Hemoglobin",
+                "value": 10.2,
+                "unit": "g/dL",
+                "reference_range": {"low": 13.5, "high": 17.5, "text": "13.5 - 17.5"},
+                "category": "Hematology",
+                "is_outside_reference": True,
+            }
+        ],
         "narrative_impressions": [],
-        "confidence": {"overall": 0.9},
+        "confidence": {
+            "text_extraction": 0.99,
+            "classification": 0.95,
+            "entity_extraction": 0.98,
+            "overall": 0.97,
+        },
         "parser_metadata": {},
     }
 
@@ -50,11 +75,75 @@ def test_medical_json_validator_accepts_schema_v1():
 
     assert validated["schema_version"] == "1.0"
     assert validated["lab_results"][0]["test_name"] == "Hemoglobin"
+    assert validated["confidence"]["text_extraction"] == 0.99
+    assert validated["confidence"]["overall"] == 0.97
+
+
+def test_medical_json_builder_populates_default_structure():
+    medical_json = MedicalJSONBuilder().build(report_type="LAB_REPORT_CBC")
+
+    assert medical_json["confidence"] == {
+        "text_extraction": 0.0,
+        "classification": 0.0,
+        "entity_extraction": 0.0,
+        "overall": 0.5,
+    }
+    assert medical_json["parser_metadata"]["parser_version"] == "1.0.0"
+    assert medical_json["parser_metadata"]["ocr_used"] is False
+    assert medical_json["parser_metadata"]["llm_used"] is False
+
+
+def test_medical_json_validator_rejects_invalid_lab_value():
+    data = {
+        "schema_version": "1.0",
+        "report_type": "LAB_REPORT_CBC",
+        "patient_metadata": {},
+        "lab_results": [{"test_name": "Hemoglobin", "value": -10.0, "unit": "g/dL"}],
+        "narrative_impressions": [],
+        "confidence": {"overall": 0.9},
+        "parser_metadata": {},
+    }
+
+    try:
+        MedicalJSONValidator().validate(data)
+    except ValueError as exc:
+        assert "value cannot be negative" in str(exc)
+    else:
+        raise AssertionError("validator accepted a negative lab value")
+
+
+def test_medical_json_validator_rejects_invalid_unit():
+    data = {
+        "schema_version": "1.0",
+        "report_type": "LAB_REPORT_CBC",
+        "patient_metadata": {},
+        "lab_results": [
+            {
+                "test_name": "Hemoglobin",
+                "value": 10.2,
+                "unit": "g/dL!!",
+                "reference_range": {"low": 13.5, "high": 17.5, "text": "13.5 - 17.5"},
+            }
+        ],
+        "narrative_impressions": [],
+        "confidence": {"overall": 0.9},
+        "parser_metadata": {},
+    }
+
+    try:
+        MedicalJSONValidator().validate(data)
+    except ValueError as exc:
+        assert "invalid characters" in str(exc)
+    else:
+        raise AssertionError("validator accepted an invalid unit")
 
 
 def test_parsing_service_builds_medical_json_from_plain_text_pdf(tmp_path):
     report_path = tmp_path / "cbc_report.pdf"
     report_path.write_text(
+        "Patient Name: Rahul Sharma\n"
+        "Age: 32\n"
+        "Gender: Male\n"
         "Complete Blood Count Report\n"
         "Hemoglobin 10.2 g/dL 13.5-17.5\n"
         "WBC 6200 cells/uL 4000-11000\n"
@@ -66,4 +155,11 @@ def test_parsing_service_builds_medical_json_from_plain_text_pdf(tmp_path):
 
     assert result.parsed_json["schema_version"] == "1.0"
     assert result.parsed_json["report_type"] == "LAB_REPORT_CBC"
+    assert result.parsed_json["patient_metadata"]["name"] == "Rahul Sharma"
+    assert result.parsed_json["patient_metadata"]["age"] == 32
+    assert result.parsed_json["confidence"]["text_extraction"] > 0
+    assert result.parsed_json["confidence"]["entity_extraction"] > 0
+    assert result.parsed_json["parser_metadata"]["parser_version"] == "1.0.0"
+    assert result.parsed_json["parser_metadata"]["ocr_used"] is False
+    assert result.parsed_json["parser_metadata"]["llm_used"] is False
     assert len(result.parsed_json["lab_results"]) >= 3

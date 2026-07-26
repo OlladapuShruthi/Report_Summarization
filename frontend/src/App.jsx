@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { StatusCard } from './components/StatusCard';
+import { ProjectRoadmap } from './components/ProjectRoadmap';
 import { UploadCard } from './components/UploadCard';
 import { DocumentList } from './components/DocumentList';
 import { checkHealth, fetchAnalysisSessions, parseAnalysisSession } from './services/api';
@@ -41,7 +42,10 @@ export function App() {
       <StatusCard
         totalWorkspaces={sessions.length}
         healthStatus={healthStatus}
+        sessions={sessions}
       />
+
+      <ProjectRoadmap sessions={sessions} />
 
       <UploadCard onUploadSuccess={loadData} />
 

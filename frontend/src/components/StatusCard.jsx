@@ -1,7 +1,10 @@
 import React from 'react';
-import { Layers, Cpu, Database } from 'lucide-react';
+import { Layers, Cpu, Database, Workflow } from 'lucide-react';
 
-export const StatusCard = ({ totalWorkspaces, healthStatus }) => {
+export const StatusCard = ({ totalWorkspaces, healthStatus, sessions = [] }) => {
+  const parsedCount = sessions.filter((session) => session.status === 'parsed').length;
+  const activeCount = sessions.filter((session) => ['uploaded', 'parsing', 'analyzing'].includes(session.status)).length;
+
   return (
     <div className="metrics-grid">
       <div className="metric-card">
@@ -19,8 +22,18 @@ export const StatusCard = ({ totalWorkspaces, healthStatus }) => {
           <Cpu size={26} />
         </div>
         <div>
-          <div className="metric-val">Sprint 1</div>
-          <div className="metric-label">Architecture Foundation</div>
+          <div className="metric-val">Sprint 3</div>
+          <div className="metric-label">Structured reasoning in progress</div>
+        </div>
+      </div>
+
+      <div className="metric-card">
+        <div className="metric-icon-box indigo">
+          <Workflow size={26} />
+        </div>
+        <div>
+          <div className="metric-val">{parsedCount}</div>
+          <div className="metric-label">Parsed workspaces</div>
         </div>
       </div>
 
@@ -33,6 +46,16 @@ export const StatusCard = ({ totalWorkspaces, healthStatus }) => {
             {healthStatus?.database || 'Initializing'}
           </div>
           <div className="metric-label">MongoDB Atlas Connection</div>
+        </div>
+      </div>
+
+      <div className="metric-card">
+        <div className="metric-icon-box blue">
+          <Layers size={26} />
+        </div>
+        <div>
+          <div className="metric-val">{activeCount}</div>
+          <div className="metric-label">Active processing queues</div>
         </div>
       </div>
     </div>

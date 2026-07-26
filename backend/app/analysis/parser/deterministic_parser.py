@@ -9,6 +9,8 @@ class LabResult:
     value: float
     unit: Optional[str] = None
     reference_range: Optional[Dict[str, Any]] = None
+    category: Optional[str] = None
+    is_outside_reference: Optional[bool] = None
     raw_line: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -17,6 +19,8 @@ class LabResult:
             "value": self.value,
             "unit": self.unit,
             "reference_range": self.reference_range,
+            "category": self.category,
+            "is_outside_reference": self.is_outside_reference,
             "raw_line": self.raw_line,
         }
 
@@ -49,6 +53,33 @@ class DeterministicParser:
         "Creatinine",
         "Urea",
     ]
+    TEST_CATEGORIES = {
+        "Hemoglobin": "Hematology",
+        "WBC": "Hematology",
+        "RBC": "Hematology",
+        "Platelets": "Hematology",
+        "Platelet Count": "Hematology",
+        "Hematocrit": "Hematology",
+        "MCV": "Hematology",
+        "MCH": "Hematology",
+        "MCHC": "Hematology",
+        "TSH": "Endocrinology",
+        "T3": "Endocrinology",
+        "T4": "Endocrinology",
+        "Total Cholesterol": "Lipid Profile",
+        "Cholesterol": "Lipid Profile",
+        "Triglycerides": "Lipid Profile",
+        "HDL": "Lipid Profile",
+        "LDL": "Lipid Profile",
+        "VLDL": "Lipid Profile",
+        "Bilirubin": "Liver Function",
+        "SGOT": "Liver Function",
+        "SGPT": "Liver Function",
+        "ALT": "Liver Function",
+        "AST": "Liver Function",
+        "Creatinine": "Kidney Function",
+        "Urea": "Kidney Function",
+    }
 
     VALUE_PATTERN = re.compile(
         r"(?P<name>[A-Za-z][A-Za-z0-9 /().%-]{1,45}?)\s*[:\-]?\s*"
@@ -89,17 +120,25 @@ class DeterministicParser:
             return None
 
         reference_range = None
+        is_outside_reference = None
         if match.group("low") and match.group("high"):
+            low = float(match.group("low"))
+            high = float(match.group("high"))
+            value = float(match.group("value"))
             reference_range = {
-                "low": float(match.group("low")),
-                "high": float(match.group("high")),
+                "low": low,
+                "high": high,
+                "text": f"{match.group('low')} - {match.group('high')}",
             }
+            is_outside_reference = value < low or value > high
 
         return LabResult(
             test_name=name,
             value=float(match.group("value")),
             unit=match.group("unit"),
             reference_range=reference_range,
+            category=self.TEST_CATEGORIES.get(name),
+            is_outside_reference=is_outside_reference,
             raw_line=line,
         )
 

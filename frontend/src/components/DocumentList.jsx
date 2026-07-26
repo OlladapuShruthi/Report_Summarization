@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, FileText, Clock, HardDrive, Play, Loader2, Braces } from 'lucide-react';
+import { Layers, FileText, Clock, HardDrive, Play, Loader2, Braces, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 export const DocumentList = ({ sessions, activeParseId, onParse }) => {
   const formatSize = (bytes) => {
@@ -47,6 +47,8 @@ export const DocumentList = ({ sessions, activeParseId, onParse }) => {
               const canParse = Boolean(docInfo) && status !== 'parsed' && !isParsing;
               const labCount = session.parsed_json?.lab_results?.length || 0;
               const narrativeCount = session.parsed_json?.narrative_impressions?.length || 0;
+              const displayCount = labCount + narrativeCount;
+              const isCompleted = status === 'parsed' || status === 'validated' || status === 'completed';
 
               return (
                 <tr key={session.analysis_id}>
@@ -73,8 +75,8 @@ export const DocumentList = ({ sessions, activeParseId, onParse }) => {
                   </td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#9ca3af' }}>
-                      <Braces size={14} />
-                      <span>{status === 'parsed' ? `${labCount + narrativeCount} items` : 'Not parsed'}</span>
+                      {isCompleted ? <CheckCircle2 size={14} color="#10b981" /> : <AlertTriangle size={14} color="#f59e0b" />}
+                      <span>{isCompleted ? `${displayCount} structured items` : 'Awaiting parsing'}</span>
                     </div>
                   </td>
                   <td>

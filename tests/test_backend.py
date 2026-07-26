@@ -60,6 +60,9 @@ def test_parse_uploaded_analysis_workspace():
     analysis_id = create_res.json()["data"]["analysis_id"]
 
     file_content = (
+        b"Patient Name: Rahul Sharma\n"
+        b"Age: 32\n"
+        b"Gender: Male\n"
         b"Complete Blood Count Report\n"
         b"Hemoglobin 10.2 g/dL 13.5-17.5\n"
         b"WBC 6200 cells/uL 4000-11000\n"
@@ -77,6 +80,9 @@ def test_parse_uploaded_analysis_workspace():
     assert data["status"] == "parsed"
     assert data["parsed_json"]["schema_version"] == "1.0"
     assert data["parsed_json"]["report_type"] == "LAB_REPORT_CBC"
+    assert data["parsed_json"]["patient_metadata"]["name"] == "Rahul Sharma"
+    assert data["parsed_json"]["lab_results"][0]["category"] == "Hematology"
+    assert data["parsed_json"]["lab_results"][0]["is_outside_reference"] is True
     assert len(data["parsed_json"]["lab_results"]) >= 3
     assert data["cleaned_text"]
 

@@ -1,9 +1,20 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 
 class MedicalJSONBuilder:
     SCHEMA_VERSION = "1.0"
+    DEFAULT_CONFIDENCE = {
+        "text_extraction": 0.0,
+        "classification": 0.0,
+        "entity_extraction": 0.0,
+        "overall": 0.5,
+    }
+    DEFAULT_PARSER_METADATA = {
+        "parser_version": "1.0.0",
+        "ocr_used": False,
+        "llm_used": False,
+    }
 
     def build(
         self,
@@ -20,9 +31,13 @@ class MedicalJSONBuilder:
             "patient_metadata": patient_metadata or {},
             "lab_results": lab_results or [],
             "narrative_impressions": narrative_impressions or [],
-            "confidence": confidence or {"overall": 0.5},
+            "confidence": {
+                **self.DEFAULT_CONFIDENCE,
+                **(confidence or {}),
+            },
             "parser_metadata": {
-                "generated_at": datetime.utcnow().isoformat(),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                **self.DEFAULT_PARSER_METADATA,
                 **(parser_metadata or {}),
             },
         }

@@ -136,6 +136,7 @@ The parser extracts **objective data only** (`test_name`, `value`, `unit`, `refe
 - Cleaning: whitespace, repeated page markers, and unit normalization.
 - Classification: keyword-based CBC, thyroid, lipid, LFT, KFT, radiology, discharge summary, and unknown routing.
 - Structuring: deterministic lab fact extraction plus narrative section extraction.
+- Enrichment: patient metadata extraction, lab categories, range text, and factual outside-reference flags.
 - Validation: Pydantic Medical JSON v1.0 validator.
 - Orchestration: `ParsingService.parse_document()` produces `raw_text`, `cleaned_text`, `parsed_json`, and `parser_metadata`.
 - API integration: `POST /api/v1/analysis/{analysis_id}/parse` updates status from `uploaded` to `parsing` to `parsed`.
@@ -151,3 +152,60 @@ The parser extracts **objective data only** (`test_name`, `value`, `unit`, `refe
 | **2026-07-26** | Module 1 (Refinement) | Upgraded to **Analysis Workspace Architecture** (`analysis_sessions`), connected to **MongoDB Atlas (`Mreport`)**, introduced standardized `APIResponse` wrappers, centralized logging to `logs/application.log`, mode-based directory layout (`analysis`, `conversation`, `reassessment`), and AI placeholders. All 5 automated unit tests passed. Pushed to GitHub. | Antigravity AI |
 | **2026-07-26** | Module 2 (Design) | Verified all 4 Sprint 1 foundation checks (live MongoDB Atlas record creation confirmed). Created and froze **Module 2 Design Specification (Parsing Layer, Medical Facts Contract, pipeline_id, processing_log, Report Type Catalogue, Parser Decision Matrix, Medical Facts JSON v1.0 Schema)**. | Antigravity AI |
 | **2026-07-26** | Module 2 (Implementation) | Implemented Sprint 2 parsing pipeline, parse API endpoint, MongoDB/in-memory persistence fields, frontend parse action, and parser/API tests. | Codex |
+| **2026-07-26** | Module 2 (Refinement) | Enriched Medical JSON with patient demographics, reference range text, lab categories, outside-reference flags, expanded confidence scores, parser version metadata, and semantic validation. | Codex |
+
+---
+
+### Module 3: Structured Reasoning Graph (Sprint 3) - IN PROGRESS
+
+#### 1. Purpose
+Convert structured medical facts into deterministic reasoning outputs before any natural-language response is generated.
+
+#### 2. Shared Graph State
+
+```json
+{
+  "analysis_id": "string",
+  "parsed_json": {},
+  "abnormal_findings": [],
+  "risk_assessment": {},
+  "consultation": {},
+  "summary": {},
+  "validation": {},
+  "retry_count": 0,
+  "execution_log": []
+}
+```
+
+#### 3. Agent Responsibilities
+- `Supervisor`: orchestration only.
+- `Anomaly Agent`: identifies out-of-range values and assigns factual status/severity.
+- `Risk Agent`: converts abnormal findings into a report-level risk assessment.
+- `Consult Agent`: converts risk and findings into structured consultation advice.
+- `Summary Agent`: creates grounded patient-friendly narrative text.
+- `Validation Agent`: checks that the summary is consistent with the structured state.
+
+#### 4. Risk Rules
+
+| Condition | Risk |
+| --- | --- |
+| No abnormal findings | LOW |
+| 1 mild abnormality | LOW |
+| Multiple mild abnormalities | MODERATE |
+| Any critical value | HIGH |
+| Multiple critical values | CRITICAL |
+
+#### 5. Routing Rules
+- If there are no abnormalities, route directly from Anomaly to Summary.
+- If abnormalities exist, route from Anomaly to Risk.
+- If risk is MODERATE or higher, route from Risk to Consult.
+- Validation retries only the Summary Agent, not the full pipeline.
+
+#### 6. Development Status
+- `GraphState` defined.
+- `Supervisor` scaffolded.
+- `Anomaly Agent` implemented.
+- `Risk Agent` in progress.
+- `Consult Agent` in progress.
+- `Summary Agent` in progress.
+- `Validation Agent` in progress.

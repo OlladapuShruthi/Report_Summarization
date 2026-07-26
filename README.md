@@ -40,6 +40,8 @@ POST /api/v1/analysis/{analysis_id}/parse
 
 The endpoint reads the uploaded report, extracts objective facts, validates Medical JSON v1.0, and updates the workspace status to `parsed`.
 
+The parsed JSON includes patient metadata, extracted lab facts, reference ranges, factual outside-reference flags, confidence scores, and parser metadata. Medical interpretation still belongs to Sprint 3.
+
 ---
 
 ### 2. Frontend Setup (React + Vite)
