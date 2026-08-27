@@ -1,9 +1,10 @@
-from typing import Any, Dict, List, NotRequired, TypedDict
+from typing import Any, Dict, List, TypedDict
 
 
 class GraphState(TypedDict, total=False):
     analysis_id: str
     parsed_json: Dict[str, Any]
+    comparison_context: Dict[str, Any]
     abnormal_findings: List[Dict[str, Any]]
     risk_assessment: Dict[str, Any]
     consultation: Dict[str, Any]

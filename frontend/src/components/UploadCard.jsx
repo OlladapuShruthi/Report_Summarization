@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { UploadCloud, FileCheck, AlertCircle, Loader2, Sparkles } from 'lucide-react';
 import { quickStartAnalysis } from '../services/api';
 
-export const UploadCard = ({ onUploadSuccess }) => {
+export const UploadCard = ({ onUploadSuccess, patientId }) => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState(null);
@@ -35,12 +35,12 @@ export const UploadCard = ({ onUploadSuccess }) => {
   };
 
   const handleUpload = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile || !patientId) return;
     setIsUploading(true);
     setUploadMessage(null);
 
     try {
-      const response = await quickStartAnalysis(selectedFile);
+      const response = await quickStartAnalysis(selectedFile, patientId);
       setUploadMessage({
         type: 'success',
         text: `Workspace created! Workspace ID: ${response.analysis_id}`
@@ -118,14 +118,14 @@ export const UploadCard = ({ onUploadSuccess }) => {
         <button
           className="upload-btn"
           onClick={handleUpload}
-          disabled={!selectedFile || isUploading}
+          disabled={!selectedFile || !patientId || isUploading}
         >
           {isUploading ? (
             <>
               <Loader2 size={18} className="animate-spin" /> Creating Workspace...
             </>
           ) : (
-            'Create Workspace & Upload'
+            patientId ? 'Create Workspace & Upload' : 'Select a Patient First'
           )}
         </button>
       </div>

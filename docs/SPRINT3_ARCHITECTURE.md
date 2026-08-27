@@ -13,7 +13,7 @@ The summary step uses Groq when `GROQ_API_KEY` is configured and falls back to a
 
 ## Shared State
 
-The graph should pass one shared state object through every node.
+The official LangGraph `StateGraph` passes one shared state object through every node. Nodes are compiled with explicit normal and conditional edges, making the execution path inspectable and testable.
 
 ```text
 GraphState

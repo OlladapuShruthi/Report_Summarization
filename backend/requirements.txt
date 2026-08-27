@@ -14,3 +14,7 @@ pypdf>=3.17.0
 pytesseract>=0.3.10
 pdf2image>=1.16.0
 pillow>=10.0.0
+langgraph>=1.0.0,<2.0.0
+faiss-cpu>=1.7.4
+numpy>=1.24.0
+

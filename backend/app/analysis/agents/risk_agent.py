@@ -62,12 +62,18 @@ class RiskAgent(BaseAgent):
             risk_level = "CRITICAL"
 
         reasoning = self._build_reasoning(abnormal_findings, risk_level)
+        comparison_context = []
+        for finding in abnormal_findings:
+            finding_status = finding.get("finding_status")
+            if finding_status:
+                comparison_context.append(f"{finding.get('test_name')}: {finding_status}.")
         return {
             "risk_level": risk_level,
             "reasoning": reasoning,
             "score": score,
             "abnormal_count": len(abnormal_findings),
             "severity_breakdown": dict(severity_counts),
+            "longitudinal_context": comparison_context,
         }
 
     def _build_reasoning(self, abnormal_findings: List[Dict[str, Any]], risk_level: str) -> List[str]:

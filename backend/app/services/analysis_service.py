@@ -9,6 +9,11 @@ from app.models.analysis_session import PipelineStatus
 from app.utils.file_handler import save_uploaded_file
 from app.core.logger import logger
 from app.graph.runtime import GraphRuntime
+from app.services.patient_service import PatientService
+from app.analysis.comparison.comparison_service import ComparisonService
+from app.analysis.comparison.history_service import HistoryService
+from app.embeddings.vector_store import vector_store
+
 
 # In-memory session store fallback if Mongo Atlas connection is degraded
 in_memory_sessions: Dict[str, Dict[str, Any]] = {}
@@ -17,6 +22,8 @@ class AnalysisService:
 
     @staticmethod
     async def create_session(patient_id: Optional[str] = None, title: Optional[str] = "Clinical Analysis Session") -> Dict[str, Any]:
+        if patient_id:
+            await PatientService.require_patient(patient_id)
         analysis_id = str(uuid.uuid4())
         now = datetime.utcnow().isoformat()
         
@@ -30,6 +37,7 @@ class AnalysisService:
             "cleaned_text": None,
             "parsed_json": None,
             "parser_metadata": None,
+            "comparison_context": None,
             "abnormal_findings": None,
             "risk_assessment": None,
             "consultation_advice": None,
@@ -126,7 +134,22 @@ class AnalysisService:
 
         try:
             parsing_result = ParsingService().parse_document(document_info["file_path"])
+            
+            # Automatically chunk & index parsed report into FAISS vector store
+            patient_id = session.get("patient_id")
+            if patient_id:
+                try:
+                    vector_store.index_report(
+                        patient_id=patient_id,
+                        analysis_id=analysis_id,
+                        parsed_json=parsing_result.parsed_json,
+                        raw_text=parsing_result.raw_text
+                    )
+                except Exception as index_err:
+                    logger.warning(f"Failed to auto-index report in FAISS for session {analysis_id}: {index_err}")
+
             update_fields = {
+
                 "raw_text": parsing_result.raw_text,
                 "cleaned_text": parsing_result.cleaned_text,
                 "parsed_json": parsing_result.parsed_json,
@@ -167,12 +190,21 @@ class AnalysisService:
             },
         )
 
+        comparison_context: Dict[str, Any] = {"history_available": False, "previous_report_count": 0, "comparisons": []}
+        patient_id = session.get("patient_id")
+        if patient_id:
+            previous_reports = await HistoryService().get_previous_parsed_reports(patient_id, analysis_id)
+            report_metadata = (parsed_json or {}).get("patient_metadata") or {}
+            current_report_date = report_metadata.get("report_date") or session.get("created_at")
+            comparison_context = ComparisonService().build_context(parsed_json, previous_reports, current_report_date)
+
         async def persist_graph_state(graph_state: Dict[str, Any]) -> None:
             consultation_block = graph_state.get("consultation") or {}
             summary_block = graph_state.get("summary") or {}
             validation_block = graph_state.get("validation") or {}
             update_fields = {
                 "abnormal_findings": graph_state.get("abnormal_findings"),
+                "comparison_context": graph_state.get("comparison_context"),
                 "risk_assessment": graph_state.get("risk_assessment"),
                 "consultation_advice": consultation_block,
                 "summary_report": summary_block.get("text"),
@@ -188,11 +220,13 @@ class AnalysisService:
             parsed_json=parsed_json,
             state_callback=persist_graph_state,
             patient_metadata=(parsed_json or {}).get("patient_metadata") or {},
+            comparison_context=comparison_context,
         )
 
         update_fields = {
             "status": final_state.get("status", PipelineStatus.ANALYZING.value),
             "abnormal_findings": final_state.get("abnormal_findings"),
+            "comparison_context": final_state.get("comparison_context"),
             "risk_assessment": final_state.get("risk_assessment"),
             "consultation_advice": final_state.get("consultation"),
             "summary_report": (final_state.get("summary") or {}).get("text"),
@@ -227,12 +261,13 @@ class AnalysisService:
         return in_memory_sessions.get(analysis_id)
 
     @staticmethod
-    async def list_sessions() -> List[Dict[str, Any]]:
+    async def list_sessions(patient_id: Optional[str] = None) -> List[Dict[str, Any]]:
         db = get_database()
         sessions = []
         if db is not None:
             try:
-                cursor = db.analysis_sessions.find().sort("created_at", -1)
+                query = {"patient_id": patient_id} if patient_id else {}
+                cursor = db.analysis_sessions.find(query).sort("created_at", -1)
                 async for doc in cursor:
                     doc["_id"] = str(doc["_id"])
                     sessions.append(doc)
@@ -241,7 +276,10 @@ class AnalysisService:
                 logger.warning(f"MongoDB list sessions failed: {e}")
 
         # Fallback in-memory sessions
-        return sorted(list(in_memory_sessions.values()), key=lambda x: x["created_at"], reverse=True)
+        sessions = in_memory_sessions.values()
+        if patient_id:
+            sessions = (session for session in sessions if session.get("patient_id") == patient_id)
+        return sorted(list(sessions), key=lambda x: x["created_at"], reverse=True)
 
     @staticmethod
     async def _update_session_fields(analysis_id: str, update_fields: Dict[str, Any]) -> None:

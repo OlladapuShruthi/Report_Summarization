@@ -1,7 +1,7 @@
 import React from 'react';
-import { Layers, FileText, Clock, HardDrive, Play, Loader2, Braces, CheckCircle2, AlertTriangle, Workflow } from 'lucide-react';
+import { Layers, FileText, Clock, HardDrive, Play, Loader2, Braces, CheckCircle2, AlertTriangle, Workflow, ClipboardCheck } from 'lucide-react';
 
-export const DocumentList = ({ sessions, activeParseId, activeAnalyzeId, onParse, onAnalyze }) => {
+export const DocumentList = ({ sessions, activeParseId, activeAnalyzeId, onParse, onAnalyze, onViewResult }) => {
   const formatSize = (bytes) => {
     if (!bytes) return '0 B';
     const k = 1024;
@@ -19,7 +19,7 @@ export const DocumentList = ({ sessions, activeParseId, activeAnalyzeId, onParse
   return (
     <div className="table-card">
       <h2 className="section-title">Active Analysis Workspaces</h2>
-      <p className="section-desc">Managed sessions in MongoDB Atlas database.</p>
+      <p className="section-desc">Only reports for the selected patient are shown.</p>
 
       {sessions.length === 0 ? (
         <div className="empty-state">
@@ -114,6 +114,14 @@ export const DocumentList = ({ sessions, activeParseId, activeAnalyzeId, onParse
                       >
                         {isAnalyzing ? <Loader2 size={15} className="animate-spin" /> : <Workflow size={15} />}
                         {isAnalyzing ? 'Analyzing' : 'Analyze'}
+                      </button>
+                      <button
+                        className="result-btn"
+                        onClick={() => onViewResult?.(session.analysis_id)}
+                        disabled={!session.parsed_json}
+                        title={session.parsed_json ? 'View structured result' : 'Result unavailable until parsing is complete'}
+                      >
+                        <ClipboardCheck size={15} /> Result
                       </button>
                     </div>
                   </td>

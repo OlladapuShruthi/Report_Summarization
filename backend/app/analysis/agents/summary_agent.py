@@ -18,9 +18,10 @@ class SummaryAgent(BaseAgent):
         abnormal_findings = updated_state.get("abnormal_findings") or []
         risk_assessment = updated_state.get("risk_assessment") or {}
         consultation = updated_state.get("consultation") or {}
+        comparison_context = updated_state.get("comparison_context") or {}
         retry_count = int(updated_state.get("retry_count", 0))
 
-        summary_text = await self._build_summary(parsed_json, abnormal_findings, risk_assessment, consultation, retry_count)
+        summary_text = await self._build_summary(parsed_json, abnormal_findings, risk_assessment, consultation, retry_count, comparison_context)
         updated_state["summary"] = {
             "text": summary_text,
             "sections": summary_text.split("\n\n"),
@@ -42,15 +43,16 @@ class SummaryAgent(BaseAgent):
         risk_assessment: Dict[str, Any],
         consultation: Dict[str, Any],
         retry_count: int,
+        comparison_context: Dict[str, Any],
     ) -> str:
         if retry_count > 0:
-            return self._build_deterministic_summary(parsed_json, abnormal_findings, risk_assessment, consultation)
+            return self._build_deterministic_summary(parsed_json, abnormal_findings, risk_assessment, consultation, comparison_context)
 
-        llm_summary = await self._build_llm_summary(parsed_json, abnormal_findings, risk_assessment, consultation)
+        llm_summary = await self._build_llm_summary(parsed_json, abnormal_findings, risk_assessment, consultation, comparison_context)
         if llm_summary:
             return llm_summary
 
-        return self._build_deterministic_summary(parsed_json, abnormal_findings, risk_assessment, consultation)
+        return self._build_deterministic_summary(parsed_json, abnormal_findings, risk_assessment, consultation, comparison_context)
 
     async def _build_llm_summary(
         self,
@@ -58,11 +60,12 @@ class SummaryAgent(BaseAgent):
         abnormal_findings: List[Dict[str, Any]],
         risk_assessment: Dict[str, Any],
         consultation: Dict[str, Any],
+        comparison_context: Dict[str, Any],
     ) -> str:
         if settings.LLM_PROVIDER.lower() != "groq" or not self._groq_client.enabled:
             return ""
 
-        prompt = self._build_prompt(parsed_json, abnormal_findings, risk_assessment, consultation)
+        prompt = self._build_prompt(parsed_json, abnormal_findings, risk_assessment, consultation, comparison_context)
         try:
             return await self._groq_client.chat_completion(prompt)
         except Exception as exc:
@@ -79,6 +82,7 @@ class SummaryAgent(BaseAgent):
         abnormal_findings: List[Dict[str, Any]],
         risk_assessment: Dict[str, Any],
         consultation: Dict[str, Any],
+        comparison_context: Dict[str, Any],
     ) -> List[Dict[str, str]]:
         patient_metadata = parsed_json.get("patient_metadata") or {}
         patient_name = patient_metadata.get("name") or "the patient"
@@ -91,6 +95,7 @@ class SummaryAgent(BaseAgent):
             f"Abnormal findings: {abnormal_findings}\n"
             f"Risk assessment: {risk_assessment}\n"
             f"Consultation advice: {consultation}\n"
+            f"Historical comparison: {comparison_context}\n"
             "Write a short summary with 3-5 short paragraphs or bullet-like sentences."
         )
         return [
@@ -104,6 +109,7 @@ class SummaryAgent(BaseAgent):
         abnormal_findings: List[Dict[str, Any]],
         risk_assessment: Dict[str, Any],
         consultation: Dict[str, Any],
+        comparison_context: Dict[str, Any],
     ) -> str:
         patient_metadata = parsed_json.get("patient_metadata") or {}
         patient_name = patient_metadata.get("name")
@@ -135,5 +141,13 @@ class SummaryAgent(BaseAgent):
             lines.append("A medical consultation is recommended.")
         else:
             lines.append("No urgent consultation is indicated based on the current findings.")
+
+        for comparison in comparison_context.get("comparisons") or []:
+            finding_status = comparison.get("finding_status")
+            previous_value = comparison.get("previous_value")
+            if previous_value is not None and finding_status in {"PERSISTENT_IMPROVING", "PERSISTENT_WORSENING", "RESOLVED", "NEW_ABNORMAL"}:
+                lines.append(
+                    f"- {comparison.get('test_name')} changed from {previous_value:g} to {comparison.get('current_value'):g} ({finding_status.lower().replace('_', ' ')})."
+                )
 
         return "\n".join(lines)

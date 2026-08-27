@@ -118,6 +118,35 @@ async def get_analysis_progress(analysis_id: str):
             details=str(e)
         )
 
+@router.get("/{analysis_id}/result")
+async def get_analysis_result(analysis_id: str):
+    try:
+        session = await AnalysisService.get_session_by_id(analysis_id)
+        if not session:
+            return error_response(message=f"Analysis workspace '{analysis_id}' not found.", code="WORKSPACE_NOT_FOUND")
+        if not session.get("parsed_json"):
+            return error_response(message="Parse the document before requesting a result.", code="RESULT_NOT_READY")
+
+        return success_response(
+            data={
+                "analysis_id": analysis_id,
+                "patient_id": session.get("patient_id"),
+                "status": session.get("status"),
+                "report_type": (session.get("parsed_json") or {}).get("report_type"),
+                "patient_metadata": (session.get("parsed_json") or {}).get("patient_metadata"),
+                "abnormal_findings": session.get("abnormal_findings") or [],
+                "comparison_context": session.get("comparison_context") or {},
+                "risk_assessment": session.get("risk_assessment") or {},
+                "consultation_advice": session.get("consultation_advice") or {},
+                "summary_report": session.get("summary_report"),
+                "validation_status": session.get("validation_status") or {},
+            },
+            message="Analysis result retrieved successfully.",
+        )
+    except Exception as e:
+        logger.error(f"Error retrieving analysis result for {analysis_id}: {e}", exc_info=True)
+        return error_response(message="Failed to retrieve analysis result.", code="RESULT_LOOKUP_FAILED", details=str(e))
+
 @router.post("/quick-start")
 async def quick_start_analysis(
     file: UploadFile = File(...),
@@ -144,9 +173,9 @@ async def quick_start_analysis(
         )
 
 @router.get("/sessions")
-async def list_analysis_sessions():
+async def list_analysis_sessions(patient_id: Optional[str] = None):
     try:
-        sessions = await AnalysisService.list_sessions()
+        sessions = await AnalysisService.list_sessions(patient_id=patient_id)
         return success_response(
             data=sessions,
             message=f"Retrieved {len(sessions)} analysis workspaces."

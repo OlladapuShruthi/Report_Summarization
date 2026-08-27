@@ -21,14 +21,14 @@ const sprintItems = [
     label: 'Sprint 3',
     title: 'Structured Reasoning',
     description: 'Graph state, anomaly reasoning, risk assessment, consultation, validation.',
-    status: 'in-progress',
+    status: 'complete',
   },
   {
     key: 'sprint4',
     label: 'Sprint 4',
-    title: 'Conversation & RAG',
-    description: 'LLM-backed follow-up questions and report-aware retrieval.',
-    status: 'planned',
+    title: 'Patient Foundation',
+    description: 'Patient profiles and patient-scoped report history, before comparison and RAG.',
+    status: 'in-progress',
   },
 ];
 

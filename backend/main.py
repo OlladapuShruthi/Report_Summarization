@@ -11,6 +11,8 @@ from app.api.health import router as health_router
 from app.api.upload import router as upload_router
 from app.api.analysis import router as analysis_router
 from app.api.chat import router as chat_router
+from app.api.patients import router as patients_router
+from app.api.auth import router as auth_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -41,9 +43,11 @@ app.add_middleware(
 
 # Include Routers
 app.include_router(health_router, prefix=settings.API_V1_STR, tags=["Health Telemetry"])
+app.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["Authentication"])
 app.include_router(analysis_router, prefix=f"{settings.API_V1_STR}/analysis", tags=["Analysis Workspaces"])
 app.include_router(upload_router, prefix=settings.API_V1_STR, tags=["Legacy Uploads"])
 app.include_router(chat_router, prefix=f"{settings.API_V1_STR}/chat", tags=["Chat & Q&A"])
+app.include_router(patients_router, prefix=f"{settings.API_V1_STR}/patients", tags=["Patient Profiles"])
 
 @app.get("/")
 async def root():

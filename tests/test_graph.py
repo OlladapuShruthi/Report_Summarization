@@ -19,6 +19,14 @@ def test_graph_builder_initializes_expected_state():
     assert "next_node" not in state
 
 
+def test_graph_builder_compiles_an_official_langgraph_workflow():
+    graph = GraphBuilder().build()
+    graph_definition = graph.get_graph()
+    node_names = set(graph_definition.nodes)
+
+    assert {"supervisor", "anomaly_agent", "risk_agent", "consult_agent", "summary_agent", "validation_agent"} <= node_names
+
+
 def test_graph_routes_resolve_based_on_state():
     assert route_after_anomaly({"abnormal_findings": []}) == "summary_agent"
     assert route_after_anomaly({"abnormal_findings": [{"test_name": "Hemoglobin"}]}) == "risk_agent"

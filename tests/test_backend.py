@@ -27,6 +27,22 @@ def test_health_endpoint():
     assert res_data["data"]["status"] == "healthy"
     assert "database" in res_data["data"]
 
+def test_patient_profiles_scope_analysis_workspaces():
+    patient_res = client.post("/api/v1/patients", json={"display_name": "Rahul Sharma", "sex": "MALE"})
+    assert patient_res.status_code == 200
+    patient = patient_res.json()["data"]
+
+    create_res = client.post("/api/v1/analysis/create", data={"patient_id": patient["patient_id"]})
+    assert create_res.json()["success"] is True
+    assert create_res.json()["data"]["patient_id"] == patient["patient_id"]
+
+    sessions_res = client.get("/api/v1/analysis/sessions", params={"patient_id": patient["patient_id"]})
+    assert sessions_res.json()["success"] is True
+    assert all(item["patient_id"] == patient["patient_id"] for item in sessions_res.json()["data"])
+
+    unknown_patient_res = client.post("/api/v1/analysis/create", data={"patient_id": "not-a-patient"})
+    assert unknown_patient_res.json()["success"] is False
+
 def test_create_and_upload_analysis_workspace():
     # 1. Create Workspace
     create_res = client.post("/api/v1/analysis/create", data={"title": "Test Clinical Session"})
@@ -130,6 +146,13 @@ def test_analysis_progress_endpoint_returns_stage_information():
     assert body["success"] is True
     assert body["data"]["analysis_id"] == analysis_id
     assert body["data"]["current_stage"] == "created"
+
+def test_analysis_result_endpoint_requires_parsed_document():
+    create_res = client.post("/api/v1/analysis/create", data={"title": "Result Test Session"})
+    analysis_id = create_res.json()["data"]["analysis_id"]
+    result_res = client.get(f"/api/v1/analysis/{analysis_id}/result")
+    assert result_res.json()["success"] is False
+    assert result_res.json()["error"]["code"] == "RESULT_NOT_READY"
 
 def test_quick_start_analysis():
     file_content = b"Quick Start Report Content."

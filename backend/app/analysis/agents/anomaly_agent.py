@@ -15,9 +15,17 @@ class AnomalyAgent(BaseAgent):
         lab_results = parsed_json.get("lab_results") or parsed_json.get("lab_facts") or []
 
         abnormal_findings = []
+        comparisons_by_name = {
+            str(item.get("test_name") or "").strip().casefold(): item
+            for item in (updated_state.get("comparison_context") or {}).get("comparisons", [])
+        }
         for lab_result in lab_results:
             finding = self._evaluate_lab_result(lab_result)
             if finding is not None:
+                comparison = comparisons_by_name.get(str(finding.get("test_name") or "").strip().casefold())
+                if comparison:
+                    finding["finding_status"] = comparison.get("finding_status")
+                    finding["trend"] = comparison.get("trend")
                 abnormal_findings.append(finding)
 
         updated_state["abnormal_findings"] = abnormal_findings

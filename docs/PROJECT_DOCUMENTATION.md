@@ -153,6 +153,10 @@ The parser extracts **objective data only** (`test_name`, `value`, `unit`, `refe
 | **2026-07-26** | Module 2 (Design) | Verified all 4 Sprint 1 foundation checks (live MongoDB Atlas record creation confirmed). Created and froze **Module 2 Design Specification (Parsing Layer, Medical Facts Contract, pipeline_id, processing_log, Report Type Catalogue, Parser Decision Matrix, Medical Facts JSON v1.0 Schema)**. | Antigravity AI |
 | **2026-07-26** | Module 2 (Implementation) | Implemented Sprint 2 parsing pipeline, parse API endpoint, MongoDB/in-memory persistence fields, frontend parse action, and parser/API tests. | Codex |
 | **2026-07-26** | Module 2 (Refinement) | Enriched Medical JSON with patient demographics, reference range text, lab categories, outside-reference flags, expanded confidence scores, parser version metadata, and semantic validation. | Codex |
+| **2026-08-27** | Module 4A (Completion) | Completed **Sprint 4A Longitudinal Engine**: Backend Patient-scoped history model, `HistoryService` prior report retrieval, `ComparisonService` (finding statuses `NEW_ABNORMAL`, `PERSISTENT_IMPROVING`, `PERSISTENT_WORSENING`, `RESOLVED`, `NORMAL_STABLE`), `comparison_context` graph state integration, history-aware LangGraph agents, Timeline & Result APIs, Patient Timeline UI, and 35/35 clean backend unit tests + production Vite bundle build. | Antigravity AI |
+| **2026-08-27** | Module 4B (Completion) | Completed **Sprint 4B Grounded Chat & RAG Engine**: Implemented `IntentClassifier` (5 categories), `PatientVectorStore` with metadata isolation, `ClarificationGuard` for missing report safety, `PatientRAGRetriever`, `ChatService` with Groq LLM + grounded fallback, `POST /api/v1/chat/message`, `GET /api/v1/chat/history/{patient_id}`, `DELETE /api/v1/chat/history/{patient_id}`, React `ChatView` frontend integration, and 39/39 clean backend unit tests. | Antigravity AI |
+
+
 
 ---
 
@@ -203,6 +207,7 @@ Convert structured medical facts into deterministic reasoning outputs before any
 
 #### 6. Development Status
 - `GraphState` defined.
+- Official LangGraph `StateGraph` compiled with explicit nodes, conditional routing, and validation retry edges.
 - `Supervisor` implemented.
 - `Anomaly Agent` implemented.
 - `Risk Agent` implemented.
@@ -212,3 +217,11 @@ Convert structured medical facts into deterministic reasoning outputs before any
 - `/analysis/{analysis_id}/analyze` runs the structured reasoning workflow.
 - `/analysis/{analysis_id}/progress` exposes the current stage and execution log.
 - Frontend dashboard shows sprint roadmap, parse/analyze actions, and progress snapshots.
+
+---
+
+### Module 4: Patient Foundation & Longitudinal Analysis (Sprint 4) - IN PROGRESS
+
+The product direction is patient-centric rather than report-centric. The first Sprint 4 slice establishes a backend-generated `patient_id`, patient-profile API, selected-patient frontend context, patient-ID validation when creating a workspace, and patient-filtered workspace listing. Upload is disabled in the frontend until a patient is selected.
+
+This creates the isolation boundary required before historical lab comparison, trend/persistence/resolution analysis, conversational retrieval, and RAG. Authentication and user-account ownership are deliberately deferred; when added, every patient query must additionally be scoped by `user_id`.
