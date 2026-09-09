@@ -9,6 +9,9 @@ class Database:
 db_instance = Database()
 
 async def connect_to_mongo():
+    if not settings.MONGODB_URL:
+        logger.warning("MONGODB_URL is not configured. Operating in in-memory fallback mode.")
+        return
     try:
         logger.info(f"Connecting to MongoDB Atlas (DB: {settings.DATABASE_NAME})...")
         db_instance.client = AsyncIOMotorClient(

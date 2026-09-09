@@ -19,13 +19,23 @@ class SummaryAgent(BaseAgent):
         risk_assessment = updated_state.get("risk_assessment") or {}
         consultation = updated_state.get("consultation") or {}
         comparison_context = updated_state.get("comparison_context") or {}
+        human_confirmations = updated_state.get("human_confirmations") or []
         retry_count = int(updated_state.get("retry_count", 0))
 
-        summary_text = await self._build_summary(parsed_json, abnormal_findings, risk_assessment, consultation, retry_count, comparison_context)
+        summary_text = await self._build_summary(
+            parsed_json,
+            abnormal_findings,
+            risk_assessment,
+            consultation,
+            retry_count,
+            comparison_context,
+            human_confirmations,
+        )
         updated_state["summary"] = {
             "text": summary_text,
             "sections": summary_text.split("\n\n"),
             "source": "deterministic" if retry_count > 0 else ("groq" if self._groq_client.enabled and settings.LLM_PROVIDER.lower() == "groq" else "deterministic"),
+            "source_facts": self._source_facts(parsed_json),
         }
         updated_state["status"] = "summary_generated"
 
@@ -36,6 +46,20 @@ class SummaryAgent(BaseAgent):
         )
         return updated_state
 
+    @staticmethod
+    def _source_facts(parsed_json: Dict[str, Any]) -> List[Dict[str, Any]]:
+        facts = []
+        for lab in parsed_json.get("lab_results") or parsed_json.get("lab_facts") or []:
+            facts.append(
+                {
+                    "test_name": lab.get("test_name"),
+                    "value": lab.get("value"),
+                    "unit": lab.get("unit"),
+                    "reference_range": lab.get("reference_range"),
+                }
+            )
+        return facts
+
     async def _build_summary(
         self,
         parsed_json: Dict[str, Any],
@@ -44,15 +68,16 @@ class SummaryAgent(BaseAgent):
         consultation: Dict[str, Any],
         retry_count: int,
         comparison_context: Dict[str, Any],
+        human_confirmations: List[Dict[str, Any]],
     ) -> str:
         if retry_count > 0:
-            return self._build_deterministic_summary(parsed_json, abnormal_findings, risk_assessment, consultation, comparison_context)
+            return self._build_deterministic_summary(parsed_json, abnormal_findings, risk_assessment, consultation, comparison_context, human_confirmations)
 
-        llm_summary = await self._build_llm_summary(parsed_json, abnormal_findings, risk_assessment, consultation, comparison_context)
+        llm_summary = await self._build_llm_summary(parsed_json, abnormal_findings, risk_assessment, consultation, comparison_context, human_confirmations)
         if llm_summary:
             return llm_summary
 
-        return self._build_deterministic_summary(parsed_json, abnormal_findings, risk_assessment, consultation, comparison_context)
+        return self._build_deterministic_summary(parsed_json, abnormal_findings, risk_assessment, consultation, comparison_context, human_confirmations)
 
     async def _build_llm_summary(
         self,
@@ -61,11 +86,12 @@ class SummaryAgent(BaseAgent):
         risk_assessment: Dict[str, Any],
         consultation: Dict[str, Any],
         comparison_context: Dict[str, Any],
+        human_confirmations: List[Dict[str, Any]],
     ) -> str:
         if settings.LLM_PROVIDER.lower() != "groq" or not self._groq_client.enabled:
             return ""
 
-        prompt = self._build_prompt(parsed_json, abnormal_findings, risk_assessment, consultation, comparison_context)
+        prompt = self._build_prompt(parsed_json, abnormal_findings, risk_assessment, consultation, comparison_context, human_confirmations)
         try:
             return await self._groq_client.chat_completion(prompt)
         except Exception as exc:
@@ -83,6 +109,7 @@ class SummaryAgent(BaseAgent):
         risk_assessment: Dict[str, Any],
         consultation: Dict[str, Any],
         comparison_context: Dict[str, Any],
+        human_confirmations: List[Dict[str, Any]],
     ) -> List[Dict[str, str]]:
         patient_metadata = parsed_json.get("patient_metadata") or {}
         patient_name = patient_metadata.get("name") or "the patient"
@@ -96,6 +123,7 @@ class SummaryAgent(BaseAgent):
             f"Risk assessment: {risk_assessment}\n"
             f"Consultation advice: {consultation}\n"
             f"Historical comparison: {comparison_context}\n"
+            f"Patient-reported context (not objective evidence): {human_confirmations}\n"
             "Write a short summary with 3-5 short paragraphs or bullet-like sentences."
         )
         return [
@@ -110,6 +138,7 @@ class SummaryAgent(BaseAgent):
         risk_assessment: Dict[str, Any],
         consultation: Dict[str, Any],
         comparison_context: Dict[str, Any],
+        human_confirmations: List[Dict[str, Any]],
     ) -> str:
         patient_metadata = parsed_json.get("patient_metadata") or {}
         patient_name = patient_metadata.get("name")
@@ -149,5 +178,18 @@ class SummaryAgent(BaseAgent):
                 lines.append(
                     f"- {comparison.get('test_name')} changed from {previous_value:g} to {comparison.get('current_value'):g} ({finding_status.lower().replace('_', ' ')})."
                 )
+            elif finding_status == "CURRENTLY_NORMAL" and previous_value is not None:
+                lines.append(
+                    f"- {comparison.get('test_name')} is currently within the provided reference range after a previous recorded abnormal result; clinical resolution is not confirmed by this report alone."
+                )
+            elif finding_status == "UNKNOWN" and previous_value is not None:
+                lines.append(
+                    f"- The current report does not include {comparison.get('test_name')}; its current status is unknown and cannot be called normal or resolved."
+                )
+
+        if human_confirmations:
+            lines.append(
+                "- Patient-reported context is recorded separately and does not replace objective report measurements."
+            )
 
         return "\n".join(lines)

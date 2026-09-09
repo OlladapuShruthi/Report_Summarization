@@ -4,6 +4,8 @@ from typing import Any, Dict
 
 from app.analysis.parser.deterministic_parser import DeterministicParser
 from app.analysis.parser.json_builder import MedicalJSONBuilder
+from app.analysis.parser.llm_structurer import LLMStructurer
+from app.analysis.parser.medspacy_parser import MedSpaCyParser
 from app.analysis.parser.narrative_parser import NarrativeParser
 from app.analysis.parser.ocr_parser import OCRParser
 from app.analysis.parser.patient_metadata_extractor import PatientMetadataExtractor
@@ -30,6 +32,8 @@ class ParsingService:
         self.report_classifier = ReportClassifier()
         self.deterministic_parser = DeterministicParser()
         self.narrative_parser = NarrativeParser()
+        self.medspacy_parser = MedSpaCyParser()
+        self.llm_structurer = LLMStructurer()
         self.json_builder = MedicalJSONBuilder()
         self.validator = MedicalJSONValidator()
 
@@ -45,15 +49,48 @@ class ParsingService:
 
         lab_results = []
         narrative_impressions = []
+        medspacy_result = None
 
         if classification.report_type.startswith("LAB_REPORT"):
-            lab_results = self.deterministic_parser.parse(cleaned_text)
-        elif classification.report_type in {"RADIOLOGY_REPORT", "DISCHARGE_SUMMARY"}:
-            narrative_impressions = self.narrative_parser.parse(cleaned_text)
-        else:
-            lab_results = self.deterministic_parser.parse(cleaned_text)
+            lab_results = self.deterministic_parser.parse_tables(extraction_metadata.get("tables") or [])
             if not lab_results:
-                narrative_impressions = self.narrative_parser.parse(cleaned_text)
+                lab_results = self.deterministic_parser.parse(cleaned_text)
+        elif classification.report_type in {"RADIOLOGY_REPORT", "DISCHARGE_SUMMARY"}:
+            medspacy_result = self.medspacy_parser.process(cleaned_text)
+            narrative_impressions = self._build_narrative_impressions(cleaned_text, medspacy_result)
+        else:
+            medspacy_result = self.medspacy_parser.process(cleaned_text)
+            narrative_impressions = self._build_narrative_impressions(cleaned_text, medspacy_result)
+            if not narrative_impressions:
+                lab_results = self.deterministic_parser.parse(cleaned_text)
+
+        llm_fallback_used = False
+        if not lab_results and not narrative_impressions:
+            if not self.llm_structurer.enabled:
+                raise ValueError("No supported medical measurements or narrative findings were extracted")
+            try:
+                llm_data = self.llm_structurer.extract(cleaned_text, classification.report_type)
+                lab_results = llm_data.get("lab_results") or []
+                narrative_impressions = llm_data.get("narrative_impressions") or []
+                if not lab_results and not narrative_impressions:
+                    raise ValueError("LLM returned no supported medical content")
+                llm_fallback_used = True
+            except Exception as exc:
+                raise ValueError(f"Structured extraction failed: {exc}") from exc
+
+        review_reasons = []
+        if extraction_metadata.get("warnings"):
+            review_reasons.append("document_extraction_warning")
+        if classification.confidence < 0.5:
+            review_reasons.append("low_report_classification_confidence")
+        if classification.report_type == "UNKNOWN":
+            review_reasons.append("unknown_report_type")
+        if medspacy_result and not medspacy_result.available:
+            review_reasons.append("medspacy_unavailable")
+        if medspacy_result and medspacy_result.warnings:
+            review_reasons.append("medspacy_processing_warning")
+        if llm_fallback_used:
+            review_reasons.append("llm_structuring_fallback")
 
         parser_metadata = {
             **extraction_metadata,
@@ -66,7 +103,11 @@ class ParsingService:
             "lab_result_count": len(lab_results),
             "narrative_impression_count": len(narrative_impressions),
             "parser_version": "1.0.0",
-            "llm_used": False,
+            "llm_used": llm_fallback_used,
+            "medspacy_used": bool(medspacy_result and medspacy_result.available),
+            "medspacy_warnings": medspacy_result.warnings if medspacy_result else [],
+            "review_required": bool(review_reasons),
+            "review_reasons": review_reasons,
         }
 
         medical_json = self.json_builder.build(
@@ -95,6 +136,11 @@ class ParsingService:
             parser_metadata=parser_metadata,
         )
 
+    def _build_narrative_impressions(self, text: str, medspacy_result: Any) -> list[Dict[str, str]]:
+        if medspacy_result and medspacy_result.sections:
+            return medspacy_result.sections
+        return self.narrative_parser.parse(text)
+
     def _extract_text(self, path: Path) -> tuple[str, Dict[str, Any]]:
         if path.suffix.lower() == ".pdf":
             pdf_result = self.pdf_parser.parse(str(path))
@@ -106,6 +152,7 @@ class ParsingService:
                 "warnings": pdf_result.warnings,
                 "processing_time_ms": pdf_result.processing_time_ms,
                 "ocr_used": False,
+                "tables": pdf_result.extracted_tables,
             }
 
             if pdf_result.is_digital_pdf:

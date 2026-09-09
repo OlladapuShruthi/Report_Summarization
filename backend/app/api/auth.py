@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from app.core.response import error_response, success_response
 from app.models.user import UserCreate, UserLogin
 from app.services.user_service import UserService
+from app.core.security import create_access_token
 
 router = APIRouter()
 
@@ -18,7 +19,8 @@ async def register(user_data: UserCreate):
         )
         return success_response(data=user, message="Account created successfully. Welcome!")
     except HTTPException as exc:
-        return error_response(message=exc.detail, code="REGISTER_FAILED")
+        # Preserve original HTTP status (e.g., 409 for duplicate email)
+        return error_response(message=exc.detail, code="REGISTER_FAILED", status_code=exc.status_code)
     except Exception as exc:
         return error_response(message="Registration failed. Please try again.", code="REGISTER_ERROR", details=str(exc))
 
@@ -31,6 +33,8 @@ async def login(credentials: UserLogin):
             email=credentials.email,
             password=credentials.password,
         )
+        user["access_token"] = create_access_token(user["user_id"])
+        user["token_type"] = "bearer"
         return success_response(data=user, message="Login successful. Welcome back!")
     except HTTPException as exc:
         # Pass through 404 (not found) and 401 (wrong password) with correct status codes

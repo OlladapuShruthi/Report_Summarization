@@ -1,4 +1,5 @@
 from typing import Any, Dict, List
+import re
 
 from app.analysis.agents.base_agent import BaseAgent
 from app.core.logger import logger
@@ -32,6 +33,12 @@ class ValidationAgent(BaseAgent):
         consultation = state.get("consultation") or {}
         summary = state.get("summary") or {}
         summary_text = (summary.get("text") or "").lower()
+        parsed_json = state.get("parsed_json") or {}
+        expected_source_facts = self._source_facts(parsed_json)
+        actual_source_facts = summary.get("source_facts") or []
+
+        if expected_source_facts and actual_source_facts != expected_source_facts:
+            issues.append("summary source facts do not match parsed medical facts")
 
         for finding in abnormal_findings:
             test_name = (finding.get("test_name") or "").lower()
@@ -47,9 +54,38 @@ class ValidationAgent(BaseAgent):
             if specialist and specialist != "none" and specialist not in summary_text:
                 issues.append(f"summary missing consultation specialist: {consultation.get('recommended_specialist')}")
 
+        for finding in abnormal_findings:
+            test_name = (finding.get("test_name") or "").lower()
+            if not test_name:
+                continue
+            if finding.get("status") == "LOW" and re.search(rf"{re.escape(test_name)}\s+is\s+normal", summary_text):
+                issues.append(f"summary contradicts abnormal status for {finding.get('test_name')}")
+            if finding.get("status") == "HIGH" and re.search(rf"{re.escape(test_name)}\s+is\s+within\s+the\s+reference", summary_text):
+                issues.append(f"summary contradicts abnormal status for {finding.get('test_name')}")
+
+        for comparison in (state.get("comparison_context") or {}).get("comparisons", []):
+            if comparison.get("finding_status") != "UNKNOWN":
+                continue
+            test_name = (comparison.get("test_name") or "").lower()
+            if re.search(rf"{re.escape(test_name)}\s+(?:is|was)\s+(?:normal|resolved)", summary_text):
+                issues.append(f"summary invents resolution for missing measurement: {comparison.get('test_name')}")
+
         passed = len(issues) == 0
         return {
+            "is_valid": passed,
             "passed": passed,
             "issues": issues,
             "checked_sections": ["abnormal_findings", "risk_assessment", "consultation", "summary"],
         }
+
+    @staticmethod
+    def _source_facts(parsed_json: Dict[str, Any]) -> List[Dict[str, Any]]:
+        return [
+            {
+                "test_name": lab.get("test_name"),
+                "value": lab.get("value"),
+                "unit": lab.get("unit"),
+                "reference_range": lab.get("reference_range"),
+            }
+            for lab in (parsed_json.get("lab_results") or parsed_json.get("lab_facts") or [])
+        ]

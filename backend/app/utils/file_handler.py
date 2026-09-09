@@ -1,5 +1,6 @@
 import os
 import uuid
+import hashlib
 from fastapi import UploadFile, HTTPException
 from app.core.config import settings
 
@@ -20,12 +21,19 @@ async def save_uploaded_file(file: UploadFile) -> dict:
 
     # 3. Read content
     content = await file.read()
+    if ext == ".pdf" and not content.startswith(b"%PDF-"):
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file is not a valid PDF document.",
+        )
     size_mb = len(content) / (1024 * 1024)
     if size_mb > settings.MAX_FILE_SIZE_MB:
         raise HTTPException(
             status_code=400,
             detail=f"File exceeds maximum allowed size of {settings.MAX_FILE_SIZE_MB}MB."
         )
+
+    file_hash = hashlib.sha256(content).hexdigest()
 
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "wb") as out_file:
@@ -37,5 +45,6 @@ async def save_uploaded_file(file: UploadFile) -> dict:
         "stored_filename": stored_filename,
         "file_path": file_path,
         "file_size": len(content),
-        "content_type": file.content_type or "application/octet-stream"
+        "content_type": file.content_type or "application/octet-stream",
+        "file_hash": file_hash,
     }

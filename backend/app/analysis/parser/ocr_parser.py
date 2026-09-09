@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List
 
+from app.core.config import settings
+
 
 @dataclass
 class OCRExtractionResult:
@@ -47,6 +49,8 @@ class OCRParser:
         from PIL import Image
         import pytesseract
 
+        if settings.TESSERACT_CMD:
+            pytesseract.pytesseract.tesseract_cmd = settings.TESSERACT_CMD
         with Image.open(path) as image:
             return pytesseract.image_to_string(image)
 
@@ -54,5 +58,7 @@ class OCRParser:
         from pdf2image import convert_from_path
         import pytesseract
 
-        images = convert_from_path(str(path))
+        if settings.TESSERACT_CMD:
+            pytesseract.pytesseract.tesseract_cmd = settings.TESSERACT_CMD
+        images = convert_from_path(str(path), poppler_path=settings.POPPLER_PATH or None)
         return "\n".join(pytesseract.image_to_string(image) for image in images)

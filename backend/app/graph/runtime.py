@@ -19,12 +19,16 @@ class GraphRuntime:
         state_callback: StateCallback = None,
         patient_metadata: Optional[Dict[str, Any]] = None,
         comparison_context: Optional[Dict[str, Any]] = None,
+        patient_id: Optional[str] = None,
+        human_confirmations: Optional[list[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
-        state = self.builder.initialize_state(analysis_id, parsed_json)
+        state = self.builder.initialize_state(analysis_id, parsed_json, patient_id or "")
         if patient_metadata:
             state["parsed_json"] = {**parsed_json, "patient_metadata": patient_metadata}
         if comparison_context:
             state["comparison_context"] = comparison_context
+        if human_confirmations:
+            state["human_confirmations"] = human_confirmations
 
         state["status"] = "analyzing"
 

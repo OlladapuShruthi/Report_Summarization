@@ -50,11 +50,13 @@ class GraphBuilder:
         )
         return workflow.compile()
 
-    def initialize_state(self, analysis_id: str, parsed_json: dict) -> GraphState:
+    def initialize_state(self, analysis_id: str, parsed_json: dict, patient_id: str = "") -> GraphState:
         return {
             "analysis_id": analysis_id,
+            "patient_id": patient_id,
             "parsed_json": parsed_json,
             "comparison_context": {},
+            "human_confirmations": [],
             "abnormal_findings": [],
             "risk_assessment": {},
             "consultation": {},

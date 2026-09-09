@@ -1,6 +1,8 @@
 from typing import Any, Optional
 from pydantic import BaseModel
 
+from fastapi.responses import JSONResponse
+
 class ErrorDetail(BaseModel):
     code: str
     details: Optional[Any] = None
@@ -19,10 +21,11 @@ def success_response(data: Any = None, message: str = "Operation successful") ->
         error=None
     ).model_dump()
 
-def error_response(message: str = "Operation failed", code: str = "BAD_REQUEST", details: Any = None) -> dict:
-    return APIResponse(
+def error_response(message: str = "Operation failed", code: str = "BAD_REQUEST", details: Any = None, status_code: int = 400) -> JSONResponse:
+    content = APIResponse(
         success=False,
         message=message,
         data=None,
         error=ErrorDetail(code=code, details=details)
     ).model_dump()
+    return JSONResponse(status_code=status_code, content=content)

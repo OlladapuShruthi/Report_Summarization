@@ -33,17 +33,20 @@ class PDFParser:
         if path.suffix.lower() != ".pdf":
             raise ValueError(f"Expected a PDF file, received: {path.suffix or 'unknown'}")
 
+        if not self._has_pdf_signature(path):
+            raise ValueError("Uploaded file is not a valid PDF document")
+
         try:
             text, page_count, tables = self._extract_with_pdfplumber(path)
         except ImportError:
-            warnings.append("pdfplumber is not installed; used plain-text fallback.")
-            text = self._plain_text_fallback(path)
-            page_count = 1 if text else 0
+            warnings.append("pdfplumber is not installed; PDF text extraction unavailable.")
+            text = ""
+            page_count = 0
             tables = []
         except Exception as exc:
             warnings.append(f"pdfplumber extraction failed: {exc}")
-            text = self._plain_text_fallback(path)
-            page_count = 1 if text else 0
+            text = ""
+            page_count = 0
             tables = []
 
         text_density = self.calculate_text_density(text, page_count)
@@ -94,5 +97,7 @@ class PDFParser:
 
             return "\n".join(page_texts).strip(), len(pdf.pages), all_tables
 
-    def _plain_text_fallback(self, path: Path) -> str:
-        return path.read_bytes().decode("utf-8", errors="ignore").strip()
+    @staticmethod
+    def _has_pdf_signature(path: Path) -> bool:
+        with path.open("rb") as source:
+            return source.read(5) == b"%PDF-"

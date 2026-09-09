@@ -35,10 +35,19 @@ class PatientRAGRetriever:
         previous_reports = await HistoryService().get_previous_parsed_reports(patient_id, current_session.get("analysis_id", "") if current_session else "")
         if not comparison_context and parsed_json:
             report_date = (parsed_json.get("patient_metadata") or {}).get("report_date") or (current_session.get("created_at") if current_session else None)
-            comparison_context = ComparisonService().build_context(parsed_json, previous_reports, report_date)
+            comparison_context = ComparisonService().build_context(
+                parsed_json,
+                previous_reports,
+                report_date,
+                current_session.get("analysis_id") if current_session else None,
+            )
 
-        # 4. Semantic Search in Vector Store (enforcing patient_id boundary)
-        vector_results = vector_store.search(query=query, patient_id=patient_id, top_k=4)
+        user_id = patient.get("user_id") if patient else None
+
+        # 4. Semantic Search in Vector Store (enforcing patient_id & user_id boundary)
+        vector_results = vector_store.search(query=query, patient_id=patient_id, user_id=user_id, top_k=4)
+        if not vector_results:
+            vector_results = vector_store.search(query=query, patient_id=None, user_id=None, top_k=2)
 
         # 5. Build Citation Sources List
         citations: List[Dict[str, str]] = []
@@ -66,13 +75,13 @@ class PatientRAGRetriever:
             source_type = meta.get("source_type", "")
             score_percent = int((vr.get("score") or 0) * 100)
             
-            if source_type == "clinical_knowledge":
+            if source_type == "clinical_knowledge" or not meta.get("patient_id"):
                 citations.append({
                     "title": meta.get("title") or "Clinical Guidelines",
                     "type": "FAISS Clinical Knowledge Base",
                     "details": f"Similarity: {score_percent}% | {vr.get('text', '')[:90]}..."
                 })
-            elif "patient" in source_type:
+            else:
                 citations.append({
                     "title": meta.get("title") or "Patient Report Vector Chunk",
                     "type": "FAISS Vector Match",

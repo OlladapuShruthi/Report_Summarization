@@ -19,6 +19,19 @@ def _hash_password(password: str) -> str:
 class UserService:
 
     @staticmethod
+    async def get_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+        db = get_database()
+        if db is not None:
+            try:
+                user = await db.users.find_one({"user_id": user_id})
+                if user:
+                    user["_id"] = str(user["_id"])
+                    return user
+            except Exception:
+                pass
+        return in_memory_users.get(user_id)
+
+    @staticmethod
     async def register(full_name: str, email: str, password: str) -> Dict[str, Any]:
         """Register a new user account. Raises 409 if email already exists."""
         email = email.strip().lower()

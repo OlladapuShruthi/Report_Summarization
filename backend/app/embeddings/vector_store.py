@@ -1,9 +1,11 @@
-import math
 import hashlib
+import json
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 import numpy as np
 import faiss
 
+from app.core.config import settings
 from app.core.logger import logger
 
 EMBEDDING_DIM = 384
@@ -64,11 +66,52 @@ class PatientVectorStore:
     with strict patient_id metadata boundary isolation.
     """
 
-    def __init__(self, dim: int = EMBEDDING_DIM):
+    def __init__(self, dim: int = EMBEDDING_DIM, storage_dir: Optional[str] = None):
         self.dim = dim
+        self._storage_dir = Path(storage_dir or settings.VECTOR_STORE_DIR)
+        self._index_path = self._storage_dir / "patient_reports.faiss"
+        self._metadata_path = self._storage_dir / "patient_reports.json"
         self._index = faiss.IndexFlatIP(self.dim)  # Flat Inner Product (cosine similarity for normalized vectors)
         self._doc_records: List[VectorDocument] = []
-        self._seed_medical_knowledge()
+        if not self._load():
+            self._seed_medical_knowledge()
+
+    def _load(self) -> bool:
+        if not self._index_path.exists() or not self._metadata_path.exists():
+            return False
+        try:
+            index = faiss.read_index(str(self._index_path))
+            records = json.loads(self._metadata_path.read_text(encoding="utf-8"))
+            if index.d != self.dim or index.ntotal != len(records):
+                raise ValueError("FAISS index and metadata record counts do not match")
+            self._index = index
+            self._doc_records = [
+                VectorDocument(
+                    doc_id=record["doc_id"],
+                    text=record["text"],
+                    metadata=record["metadata"],
+                    vector=np.zeros(self.dim, dtype=np.float32),
+                )
+                for record in records
+            ]
+            logger.info("Loaded %d persistent FAISS records.", len(self._doc_records))
+            if not any(doc.doc_id.startswith("kb_") for doc in self._doc_records):
+                self._seed_medical_knowledge()
+            return True
+        except Exception as exc:
+            logger.warning("Persistent FAISS load failed; rebuilding knowledge index: %s", exc)
+            self._index = faiss.IndexFlatIP(self.dim)
+            self._doc_records = []
+            return False
+
+    def _save(self) -> None:
+        self._storage_dir.mkdir(parents=True, exist_ok=True)
+        faiss.write_index(self._index, str(self._index_path))
+        records = [
+            {"doc_id": doc.doc_id, "text": doc.text, "metadata": doc.metadata}
+            for doc in self._doc_records
+        ]
+        self._metadata_path.write_text(json.dumps(records, ensure_ascii=True), encoding="utf-8")
 
     def _seed_medical_knowledge(self) -> None:
         """Seed clinical guidelines with patient_id = None (accessible as general reference)."""
@@ -98,6 +141,7 @@ class PatientVectorStore:
         vec_2d = np.array([doc.vector], dtype=np.float32)
         self._index.add(vec_2d)
         self._doc_records.append(doc)
+        self._save()
         logger.debug(f"Added document '{doc_id}' to FAISS vector index (total size: {self._index.ntotal})")
 
     def index_report(
@@ -105,10 +149,11 @@ class PatientVectorStore:
         patient_id: str,
         analysis_id: str,
         parsed_json: Dict[str, Any],
-        raw_text: Optional[str] = None
+        raw_text: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> int:
         """
-        Dynamically chunk and index a parsed patient report into FAISS with patient_id metadata.
+        Dynamically chunk and index a parsed patient report into FAISS with patient_id and user_id metadata.
         Returns the number of chunks added.
         """
         chunks_added = 0
@@ -122,6 +167,7 @@ class PatientVectorStore:
             text=patient_desc,
             metadata={
                 "patient_id": patient_id,
+                "user_id": user_id,
                 "analysis_id": analysis_id,
                 "source_type": "patient_report_metadata",
                 "title": "Patient Metadata Summary"
@@ -147,6 +193,7 @@ class PatientVectorStore:
                 text=chunk_text,
                 metadata={
                     "patient_id": patient_id,
+                    "user_id": user_id,
                     "analysis_id": analysis_id,
                     "test_name": test_name,
                     "value": value,
@@ -169,6 +216,7 @@ class PatientVectorStore:
                         text=paragraph,
                         metadata={
                             "patient_id": patient_id,
+                            "user_id": user_id,
                             "analysis_id": analysis_id,
                             "source_type": "patient_raw_text",
                             "title": f"Report Narrative Excerpt {i+1}"
@@ -183,10 +231,11 @@ class PatientVectorStore:
         self,
         query: str,
         patient_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         top_k: int = 4
     ) -> List[Dict[str, Any]]:
         """
-        Search FAISS vector store, restricting patient report chunks strictly to matching patient_id.
+        Search FAISS vector store, restricting patient report chunks strictly to matching patient_id (and user_id if present).
         Clinical guidelines with patient_id = None are accessible as general knowledge.
         """
         if self._index.ntotal == 0:
@@ -196,7 +245,7 @@ class PatientVectorStore:
         query_2d = np.array([query_vec], dtype=np.float32)
 
         # Retrieve extra candidate neighbors from FAISS to allow for patient filtering
-        fetch_k = min(self._index.ntotal, max(top_k * 4, 16))
+        fetch_k = self._index.ntotal
         scores, indices = self._index.search(query_2d, k=fetch_k)
 
         results = []
@@ -206,10 +255,16 @@ class PatientVectorStore:
 
             doc = self._doc_records[idx]
             doc_patient_id = doc.metadata.get("patient_id")
+            doc_user_id = doc.metadata.get("user_id")
 
             # Strict Patient Data Isolation Enforcement:
             # If chunk is from a patient report (doc_patient_id is present), it MUST match requested patient_id!
             if doc_patient_id is not None and doc_patient_id != patient_id:
+                continue
+
+            # Strict User Isolation:
+            # If user_id is provided and doc has a user_id, it must match!
+            if doc_user_id is not None and user_id is not None and doc_user_id != user_id:
                 continue
 
             results.append({

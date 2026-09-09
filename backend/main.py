@@ -13,6 +13,7 @@ from app.api.analysis import router as analysis_router
 from app.api.chat import router as chat_router
 from app.api.patients import router as patients_router
 from app.api.auth import router as auth_router
+from app.api.reports import router as reports_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -48,6 +49,7 @@ app.include_router(analysis_router, prefix=f"{settings.API_V1_STR}/analysis", ta
 app.include_router(upload_router, prefix=settings.API_V1_STR, tags=["Legacy Uploads"])
 app.include_router(chat_router, prefix=f"{settings.API_V1_STR}/chat", tags=["Chat & Q&A"])
 app.include_router(patients_router, prefix=f"{settings.API_V1_STR}/patients", tags=["Patient Profiles"])
+app.include_router(reports_router, prefix=f"{settings.API_V1_STR}/reports", tags=["Reports"])
 
 @app.get("/")
 async def root():
