@@ -108,7 +108,7 @@ class ChatService:
         comparisons = comparison_context.get("comparisons") or []
 
         # Attempt Groq LLM Generation first if enabled
-        if self.groq_client.enabled and settings.LLM_PROVIDER.lower() == "groq":
+        if self.groq_client.enabled:
             prompt = [
                 {
                     "role": "system",
@@ -135,7 +135,12 @@ class ChatService:
                 if llm_ans and len(llm_ans.strip()) > 10:
                     return llm_ans
             except Exception as exc:
-                logger.warning(f"Groq chat generation failed, using deterministic fallback: {exc}")
+                if settings.LLM_REQUIRED:
+                    raise RuntimeError("Live LLM chat generation failed") from exc
+                logger.warning(f"LLM chat generation failed, using deterministic fallback: {exc}")
+
+        elif settings.LLM_REQUIRED:
+            raise RuntimeError("A live LLM is required but is not configured")
 
         # Deterministic Grounded Fallback Generation
         return self._build_deterministic_chat_response(
@@ -167,7 +172,13 @@ class ChatService:
                 return f"There are no recorded medical reports or lab measurements for {patient_name} in the system yet. Please upload a medical report first to analyze and query clinical values."
 
         if intent == IntentType.REPORT_HISTORY_QUERY:
-            if not comparisons:
+            has_history = any(comp.get("previous_value") is not None for comp in comparisons)
+            if not has_history:
+                # Include current facts if available, even if there's no history to compare against
+                labs = parsed_json.get("lab_results") or parsed_json.get("lab_facts") or []
+                if labs:
+                    facts_str = ", ".join([f"{l.get('test_name')}: {l.get('value')} {l.get('unit') or ''}" for l in labs[:5]])
+                    return f"I only have your current medical report available and do not have prior reports to determine a trend. However, your current lab findings are: {facts_str}. Please upload an earlier medical report to compare changes over time."
                 return f"I analyzed {patient_name}'s current records, but there are no prior historical reports with comparable lab values to determine a trend."
             lines = [f"Based on historical reports for {patient_name}:"]
             for comp in comparisons:
@@ -198,6 +209,27 @@ class ChatService:
 
         if intent == IntentType.REANALYSIS_REQUEST:
             return f"Re-analysis request received. Evaluated {patient_name}'s reports against available longitudinal history and clinical knowledge."
+
+        if intent == IntentType.LIFESTYLE_ADVICE:
+            labs = parsed_json.get("lab_results") or parsed_json.get("lab_facts") or []
+            # Build context-aware tips based on actual abnormal findings
+            lines = [f"Here are some general health tips for {patient_name} based on the available medical records:"]
+            # Check for common abnormalities and give targeted advice
+            low_hb = any(l.get('test_name','').lower() in ('hemoglobin','hb') and l.get('value', 99) < 12 for l in labs)
+            high_cholesterol = any(l.get('test_name','').lower() in ('total cholesterol','ldl') and l.get('value', 0) > 200 for l in labs)
+            high_triglycerides = any(l.get('test_name','').lower() == 'triglycerides' and l.get('value', 0) > 150 for l in labs)
+            if low_hb:
+                lines.append("- Iron & Hemoglobin: Include iron-rich foods like leafy greens (spinach), lentils, beans, and lean red meat. Eat vitamin C-rich foods (citrus, tomatoes) with iron-rich meals to boost absorption. Avoid tea/coffee immediately after meals as they reduce iron absorption.")
+            if high_cholesterol:
+                lines.append("- Cholesterol: Reduce saturated fats (fried food, red meat, full-fat dairy). Eat more fiber-rich foods like oats, fruits, and vegetables. Include healthy fats from fish, nuts, and olive oil.")
+            if high_triglycerides:
+                lines.append("- Triglycerides: Limit sugary foods, refined carbohydrates, and alcohol. Increase physical activity — even 30 minutes of walking daily can significantly lower triglycerides.")
+            if not low_hb and not high_cholesterol and not high_triglycerides:
+                lines.append("- Stay well-hydrated and maintain a balanced diet rich in vegetables, fruits, whole grains, and lean proteins.")
+                lines.append("- Aim for at least 30 minutes of moderate physical activity most days.")
+                lines.append("- Get adequate sleep (7-9 hours per night) and manage stress through relaxation techniques.")
+            lines.append("- Important: These are general evidence-based guidelines only. Please consult your physician or a registered dietitian for personalized medical dietary advice.")
+            return "\n".join(lines)
 
         patient_chunks = [v.get("text") for v in vector_results if (v.get("metadata") or {}).get("patient_id")]
         if patient_chunks:

@@ -1,92 +1,115 @@
 import React, { useState } from 'react';
-import { TrendingUp, ArrowRight } from 'lucide-react';
+import { Search } from 'lucide-react';
 
 export function FindingsStatusView({ result }) {
-  const [activeTab, setActiveTab] = useState('All');
+  const [activeTab, setActiveTab] = useState('ALL');
 
-  const findingsList = [
-    { parameter: 'Hemoglobin (Hb)', current: '12.4 g/dL', status: 'Improving', change: '10.2 → 12.4', trend: '↗', category: 'Improving' },
-    { parameter: 'RBC Count', current: '4.2 million/uL', status: 'Persistent', change: '4.1 → 4.2', trend: '↗', category: 'Persistent' },
-    { parameter: 'Hematocrit (HCT)', current: '39 %', status: 'Improving', change: '34 → 39', trend: '↗', category: 'Improving' },
-    { parameter: 'MCV', current: '82 fL', status: 'Resolved', change: '78 → 82', trend: '↗', category: 'Resolved' },
-    { parameter: 'WBC Count', current: '7,600 /uL', status: 'Normal', change: 'Normal', trend: '—', category: 'Normal' },
-  ];
+  // Extract findings from actual analysis result
+  const abnormalFindings = result?.abnormal_findings || [];
+  const findingsList = abnormalFindings.map((f) => {
+    const rawStatus = f.lifecycle_state || f.lifecycle_status || f.status || 'UNKNOWN';
+    const statusUpper = String(rawStatus).toUpperCase().trim();
+    return {
+      parameter: f.parameter || f.name || f.test_name || 'Lab Parameter',
+      current: f.value != null ? `${f.value} ${f.unit || ''}` : (f.current_value != null ? `${f.current_value} ${f.unit || ''}` : '—'),
+      status: statusUpper,
+      change: f.change_description || (f.previous_value != null ? `${f.previous_value} → ${f.value || f.current_value}` : 'No prior baseline'),
+      trend: f.trend || f.lifecycle_state || rawStatus,
+    };
+  });
+
+  const validStatuses = ['ALL', 'ACTIVE', 'PERSISTENT', 'IMPROVING', 'WORSENED', 'CURRENTLY_NORMAL', 'UNKNOWN'];
 
   const counts = {
-    All: 11,
-    New: 1,
-    Persistent: 2,
-    Improving: 3,
-    Resolved: 1,
-    Normal: 4,
+    ALL: findingsList.length,
+    ACTIVE: findingsList.filter(f => f.status === 'ACTIVE').length,
+    PERSISTENT: findingsList.filter(f => f.status === 'PERSISTENT').length,
+    IMPROVING: findingsList.filter(f => f.status === 'IMPROVING').length,
+    WORSENED: findingsList.filter(f => f.status === 'WORSENED').length,
+    CURRENTLY_NORMAL: findingsList.filter(f => f.status === 'CURRENTLY_NORMAL').length,
+    UNKNOWN: findingsList.filter(f => f.status === 'UNKNOWN' || !['ACTIVE', 'PERSISTENT', 'IMPROVING', 'WORSENED', 'CURRENTLY_NORMAL'].includes(f.status)).length,
   };
 
+  const filteredList = activeTab === 'ALL'
+    ? findingsList
+    : findingsList.filter(f => f.status === activeTab);
+
   const getStatusBadge = (status) => {
-    if (status === 'Improving') return <span className="badge badge-status-improving">Improving</span>;
-    if (status === 'Persistent') return <span className="badge badge-status-persistent">Persistent</span>;
-    if (status === 'Resolved') return <span className="badge badge-status-resolved">Resolved</span>;
-    return <span className="badge badge-status-normal">Normal</span>;
+    const s = String(status || '').toUpperCase();
+    if (s === 'IMPROVING') return <span className="badge badge-status-improving">IMPROVING</span>;
+    if (s === 'WORSENED') return <span className="badge badge-status-persistent" style={{ backgroundColor: '#fee2e2', color: '#991b1b' }}>WORSENED</span>;
+    if (s === 'PERSISTENT') return <span className="badge badge-status-persistent">PERSISTENT</span>;
+    if (s === 'CURRENTLY_NORMAL') return <span className="badge badge-status-normal">CURRENTLY NORMAL</span>;
+    if (s === 'ACTIVE') return <span className="badge badge-status-persistent">ACTIVE</span>;
+    return <span className="badge" style={{ backgroundColor: '#f1f5f9', color: '#475569' }}>UNKNOWN</span>;
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Header matching Wireframe Box 10 */}
+      {/* Header */}
       <div>
-        <h1 style={{ fontSize: '1.75rem', fontWeight: '700', color: '#0f172a' }}>Findings Status (New / Persistent / Resolved)</h1>
-        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>AI identifies how each finding is changing</p>
+        <h1 style={{ fontSize: '1.75rem', fontWeight: '700', color: '#0f172a' }}>Longitudinal Finding Lifecycle</h1>
+        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>
+          Backend-verified lifecycle states: ACTIVE, PERSISTENT, IMPROVING, WORSENED, CURRENTLY NORMAL, and UNKNOWN
+        </p>
       </div>
 
-      {/* Filter Pills Bar matching Wireframe Box 10 */}
-      <div className="card" style={{ padding: '16px 20px' }}>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {[
-            { key: 'All', label: `All (${counts.All})` },
-            { key: 'New', label: `New (${counts.New})` },
-            { key: 'Persistent', label: `Persistent (${counts.Persistent})` },
-            { key: 'Improving', label: `Improving (${counts.Improving})` },
-            { key: 'Resolved', label: `Resolved (${counts.Resolved})` },
-            { key: 'Normal', label: `Normal (${counts.Normal})` },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              className={`filter-tab ${activeTab === tab.key ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.key)}
-            >
-              {tab.label}
-            </button>
-          ))}
+      {findingsList.length === 0 ? (
+        <div className="card" style={{ padding: '48px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+          <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#f1f5f9', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Search size={32} />
+          </div>
+          <div>
+            <h3 style={{ fontSize: '1.15rem', fontWeight: '700', color: '#0f172a', marginBottom: '4px' }}>No Medical Findings Recorded</h3>
+            <p style={{ color: '#64748b', fontSize: '0.9rem', maxWidth: '420px' }}>
+              There are no analyzed findings recorded for this patient. Upload and analyze a medical report to view clinical findings.
+            </p>
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          {/* Filter Pills Bar */}
+          <div className="card" style={{ padding: '16px 20px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {validStatuses.map((tab) => (
+                <button
+                  key={tab}
+                  className={`filter-tab ${activeTab === tab ? 'active' : ''}`}
+                  onClick={() => setActiveTab(tab)}
+                >
+                  {tab.replaceAll('_', ' ')} ({counts[tab] || 0})
+                </button>
+              ))}
+            </div>
+          </div>
 
-      {/* Table matching Wireframe Box 10 */}
-      <div className="card">
-        <table className="custom-table">
-          <thead>
-            <tr>
-              <th>Parameter</th>
-              <th>Current Value</th>
-              <th>Status</th>
-              <th>Change</th>
-              <th>Trend</th>
-            </tr>
-          </thead>
-          <tbody>
-            {findingsList.map((item, idx) => (
-              <tr key={idx}>
-                <td style={{ fontWeight: '600', color: '#0f172a' }}>{item.parameter}</td>
-                <td>{item.current}</td>
-                <td>{getStatusBadge(item.status)}</td>
-                <td style={{ fontFamily: 'monospace' }}>{item.change}</td>
-                <td style={{ fontWeight: '700', color: '#2563eb' }}>{item.trend}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '16px' }}>
-          Status is AI-detected based on available historical reports.
-        </div>
-      </div>
+          {/* Table */}
+          <div className="card">
+            <table className="custom-table">
+              <thead>
+                <tr>
+                  <th>Parameter</th>
+                  <th>Current Value</th>
+                  <th>Lifecycle Status</th>
+                  <th>Comparison Change</th>
+                  <th>Evidence Trend</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredList.map((item, idx) => (
+                  <tr key={idx}>
+                    <td style={{ fontWeight: '600', color: '#0f172a' }}>{item.parameter}</td>
+                    <td>{item.current}</td>
+                    <td>{getStatusBadge(item.status)}</td>
+                    <td style={{ fontFamily: 'monospace' }}>{item.change}</td>
+                    <td style={{ fontWeight: '600', color: '#2563eb' }}>{item.trend}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }

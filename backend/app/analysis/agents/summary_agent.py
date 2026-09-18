@@ -34,7 +34,7 @@ class SummaryAgent(BaseAgent):
         updated_state["summary"] = {
             "text": summary_text,
             "sections": summary_text.split("\n\n"),
-            "source": "deterministic" if retry_count > 0 else ("groq" if self._groq_client.enabled and settings.LLM_PROVIDER.lower() == "groq" else "deterministic"),
+            "source": "deterministic" if retry_count > 0 else (settings.LLM_PROVIDER or "deterministic" if self._groq_client.enabled else "deterministic"),
             "source_facts": self._source_facts(parsed_json),
         }
         updated_state["status"] = "summary_generated"
@@ -88,15 +88,19 @@ class SummaryAgent(BaseAgent):
         comparison_context: Dict[str, Any],
         human_confirmations: List[Dict[str, Any]],
     ) -> str:
-        if settings.LLM_PROVIDER.lower() != "groq" or not self._groq_client.enabled:
+        if not self._groq_client.enabled:
+            if settings.LLM_REQUIRED:
+                raise RuntimeError("A live LLM is required but is not configured")
             return ""
 
         prompt = self._build_prompt(parsed_json, abnormal_findings, risk_assessment, consultation, comparison_context, human_confirmations)
         try:
             return await self._groq_client.chat_completion(prompt)
         except Exception as exc:
+            if settings.LLM_REQUIRED:
+                raise RuntimeError("Live LLM summary generation failed") from exc
             logger.warning(
-                "[%s] Groq summary generation failed, falling back to deterministic summary: %s",
+                "[%s] LLM summary generation failed, falling back to deterministic summary: %s",
                 self.agent_name,
                 exc,
             )

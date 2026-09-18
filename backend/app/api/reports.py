@@ -2,7 +2,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.security import get_optional_user_id
+from app.core.security import get_current_user_id as get_optional_user_id
 from app.services.patient_service import PatientService
 from app.core.response import success_response, error_response
 from app.database.mongodb import get_database

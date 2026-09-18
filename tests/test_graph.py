@@ -14,6 +14,8 @@ def test_graph_builder_initializes_expected_state():
     state = builder.initialize_state("analysis-1", {"lab_results": []})
 
     assert state["analysis_id"] == "analysis-1"
+    assert state["patient_id"] == ""
+    assert state["human_confirmations"] == []
     assert state["retry_count"] == 0
     assert state["status"] == "initialized"
     assert "next_node" not in state

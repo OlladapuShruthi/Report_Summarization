@@ -69,6 +69,20 @@ def test_dynamic_report_chunk_indexing():
     assert any("sess_555_lab" in doc_id for doc_id in matched_doc_ids)
 
 
+def test_faiss_records_survive_store_reload(tmp_path):
+    first_store = PatientVectorStore(storage_dir=str(tmp_path))
+    first_store.add_document(
+        doc_id="persistent_hb",
+        text="Patient PERSISTENT Hemoglobin is 10.2 g/dL.",
+        metadata={"patient_id": "PERSISTENT", "source_type": "patient_lab_fact"},
+    )
+
+    reloaded_store = PatientVectorStore(storage_dir=str(tmp_path))
+    results = reloaded_store.search("Hemoglobin", patient_id="PERSISTENT")
+
+    assert any(result["doc_id"] == "persistent_hb" for result in results)
+
+
 @pytest.mark.asyncio
 async def test_rag_retriever_with_faiss_citations():
     retriever = PatientRAGRetriever()

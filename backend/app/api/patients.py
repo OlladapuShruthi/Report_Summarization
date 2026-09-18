@@ -8,7 +8,7 @@ from app.services.analysis_service import AnalysisService
 from app.services.finding_event_service import FindingEventService
 from app.services.human_confirmation_service import HumanConfirmationService
 from app.services.finding_service import FindingService
-from app.core.security import get_optional_user_id
+from app.core.security import get_current_user_id as get_optional_user_id
 
 router = APIRouter()
 

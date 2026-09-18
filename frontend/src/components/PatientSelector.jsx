@@ -40,7 +40,7 @@ export const PatientSelector = ({ patients, selectedPatientId, onSelect, onCreat
         <form onSubmit={createProfile} className="patient-create-form">
           <label>
             New patient name
-            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Rahul Sharma" maxLength="120" />
+            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. John Doe" maxLength="120" />
           </label>
           <button type="submit" className="patient-add-btn" disabled={isCreating || !name.trim()}><Plus size={16} /> {isCreating ? 'Creating' : 'Add patient'}</button>
         </form>

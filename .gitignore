@@ -1,29 +1,105 @@
-# Environment & Secrets
+# ============================================================
+# Environment & Secrets  (NEVER commit real credentials)
+# ============================================================
 .env
 *.env
+!.env.example
 
+# ============================================================
 # Python
+# ============================================================
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments (all common names)
 venv/
 .venv/
+.venv310/
+env/
+.env/
+ENV/
+
+# Eggs & builds
 *.egg-info/
-.pytest_cache/
-
-# Node / Frontend
-node_modules/
+*.egg
 dist/
-.vite/
+build/
+*.whl
 
+# pytest
+.pytest_cache/
+.pytest-temp/
+.pytest-live-backend/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+nosetests.xml
+
+# mypy / type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ============================================================
+# Node / Frontend
+# ============================================================
+node_modules/
+frontend/dist/
+.vite/
+frontend/.vite/
+*.tsbuildinfo
+
+# ============================================================
 # Application Runtime Storage & Logs
+# ============================================================
+# Backend application logs
 backend/logs/*
 !backend/logs/.gitkeep
+
+# Root-level logs directory (generated at runtime)
+logs/
+
+# FAISS vector store (rebuilt on first run)
+backend/data/vector_store/*
+!backend/data/vector_store/.gitkeep
+
+# Uploaded document files
 documents/uploads/*
 !documents/uploads/.gitkeep
 
-# System & IDE
+# Sample reports (test files, not part of the codebase)
+sample_reports/
+
+# ============================================================
+# Scratch / Dev-only Scripts
+# ============================================================
+simulate_backend_flow.py
+generate_sample_reports.py
+
+# ============================================================
+# OS / IDE
+# ============================================================
 .DS_Store
+.DS_Store?
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# JetBrains
 .idea/
+
+# VS Code
 .vscode/
+
+# Windows
+*.lnk
+
+# ============================================================
+# Antigravity IDE
+# ============================================================
+.agents/

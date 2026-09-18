@@ -46,20 +46,16 @@ class RiskAgent(BaseAgent):
             finding.get("severity", "Mild") for finding in abnormal_findings
         )
         score = sum(self.SEVERITY_WEIGHTS.get(severity, 1) for severity in severity_counts.elements())
-        critical_count = severity_counts.get("Critical", 0)
 
-        if critical_count >= 2:
-            risk_level = "CRITICAL"
-        elif critical_count == 1:
-            risk_level = "HIGH"
-        elif score <= 1:
+        # This agent has report ranges but no clinically validated emergency
+        # thresholds, symptoms, or medical history. Counts of abnormal values
+        # must never manufacture HIGH/CRITICAL urgency. Those levels are
+        # reserved for a future, clinically approved rule set with explicit
+        # source thresholds. Current output is conservative decision support.
+        if len(abnormal_findings) == 1 and severity_counts.get("Mild", 0) == 1:
             risk_level = "LOW"
-        elif score <= 3:
-            risk_level = "MODERATE"
-        elif score <= 5:
-            risk_level = "HIGH"
         else:
-            risk_level = "CRITICAL"
+            risk_level = "MODERATE"
 
         reasoning = self._build_reasoning(abnormal_findings, risk_level)
         comparison_context = []
@@ -74,6 +70,7 @@ class RiskAgent(BaseAgent):
             "abnormal_count": len(abnormal_findings),
             "severity_breakdown": dict(severity_counts),
             "longitudinal_context": comparison_context,
+            "safety_note": "This is a range-based review signal, not an emergency determination or diagnosis.",
         }
 
     def _build_reasoning(self, abnormal_findings: List[Dict[str, Any]], risk_level: str) -> List[str]:

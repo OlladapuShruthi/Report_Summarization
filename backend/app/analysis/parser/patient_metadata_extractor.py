@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 
@@ -16,7 +17,25 @@ class PatientMetadataExtractor:
             "name": self._extract_name(text),
             "age": self._extract_age(text),
             "gender": self._extract_gender(text),
+            "report_date": self._extract_report_date(text),
         }
+
+    def _extract_report_date(self, text: str) -> Optional[str]:
+        """Return an ISO clinical report date only when an explicit date is present."""
+        match = re.search(
+            r"\b(?:report\s*date|date)\s*[:\-]?\s*(?P<value>\d{1,2}[-/]?[A-Za-z]{3,9}[-/]?\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\b",
+            text or "",
+            re.IGNORECASE,
+        )
+        if not match:
+            return None
+        raw_value = match.group("value").strip()
+        for date_format in ("%d-%b-%Y", "%d-%B-%Y", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+            try:
+                return datetime.strptime(raw_value, date_format).date().isoformat()
+            except ValueError:
+                continue
+        return None
 
     def _extract_name(self, text: str) -> Optional[str]:
         patterns = [

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
+import { AuthContext } from '../context/AuthContext';
 import { Activity, AlertCircle, Loader } from 'lucide-react';
 import { loginUser, registerUser } from '../services/api';
 
@@ -21,30 +22,26 @@ export function AuthView({ initialMode = 'login', onLoginSuccess, onBackToHome }
   const [signupLoading, setSignupLoading] = useState(false);
 
   // ─── Login Handler ────────────────────────────────────────────────────────────
+
+  const { login } = useContext(AuthContext);
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
     setLoginLoading(true);
     try {
-      const user = await loginUser(loginEmail.trim(), loginPassword);
-      // Persist session to localStorage
-      localStorage.setItem('med_user', JSON.stringify(user));
+      const user = await login(loginEmail.trim(), loginPassword.trim());
       onLoginSuccess(user);
     } catch (err) {
       const msg = err.message || 'Login failed';
-      if (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('sign up')) {
-        setLoginError("No account found with this email. Please Sign Up first.");
-      } else if (msg.toLowerCase().includes('password') || msg.toLowerCase().includes('incorrect')) {
-        setLoginError("Incorrect password. Please try again.");
-      } else {
-        setLoginError(msg);
-      }
+      setLoginError(msg);
     } finally {
       setLoginLoading(false);
     }
   };
 
+
   // ─── Sign Up Handler ──────────────────────────────────────────────────────────
+  const { signup } = useContext(AuthContext);
   const handleSignup = async (e) => {
     e.preventDefault();
     setSignupError('');
@@ -60,9 +57,7 @@ export function AuthView({ initialMode = 'login', onLoginSuccess, onBackToHome }
 
     setSignupLoading(true);
     try {
-      const user = await registerUser(signupName.trim(), signupEmail.trim(), signupPassword);
-      // Auto login after registration
-      localStorage.setItem('med_user', JSON.stringify(user));
+      const user = await signup(signupName.trim(), signupEmail.trim(), signupPassword);
       onLoginSuccess(user);
     } catch (err) {
       const msg = err.message || 'Registration failed';

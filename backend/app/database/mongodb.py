@@ -10,6 +10,8 @@ db_instance = Database()
 
 async def connect_to_mongo():
     if not settings.MONGODB_URL:
+        if settings.MONGODB_REQUIRED:
+            raise RuntimeError("MONGODB_URL is required but is not configured")
         logger.warning("MONGODB_URL is not configured. Operating in in-memory fallback mode.")
         return
     try:
@@ -23,6 +25,10 @@ async def connect_to_mongo():
         await db_instance.client.admin.command('ping')
         logger.info(f"Connected successfully to MongoDB Atlas database '{settings.DATABASE_NAME}'.")
     except Exception as e:
+        db_instance.client = None
+        db_instance.db = None
+        if settings.MONGODB_REQUIRED:
+            raise RuntimeError("MongoDB connection failed while MONGODB_REQUIRED=true") from e
         logger.warning(f"MongoDB Atlas connection check warning: {e}. Operating in graceful fallback mode.")
 
 async def close_mongo_connection():

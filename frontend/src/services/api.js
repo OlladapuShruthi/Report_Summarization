@@ -4,7 +4,34 @@ const API_BASE_URL = 'http://localhost:8000/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 120000, // 120 seconds to allow for LangGraph/Gemini processing
+});
+
+// Request interceptor to attach JWT token from localStorage
+api.interceptors.request.use((config) => {
+  try {
+    const raw = localStorage.getItem('med_user');
+    if (raw) {
+      const user = JSON.parse(raw);
+      if (user && user.access_token) {
+        config.headers['Authorization'] = `Bearer ${user.access_token}`;
+      }
+    }
+  } catch (e) {
+    // ignore parsing errors
+  }
+  return config;
+}, (error) => Promise.reject(error));
+
+// Response interceptor for global 401 handling (logout)
+api.interceptors.response.use((response) => response, (error) => {
+  if (error.response && error.response.status === 401) {
+    localStorage.removeItem('med_user');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+    }
+  }
+  return Promise.reject(error);
 });
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
@@ -12,13 +39,17 @@ const api = axios.create({
 export const loginUser = async (email, password) => {
   const response = await api.post('/auth/login', { email, password });
   if (response.data?.success) return response.data.data;
-  throw new Error(response.data?.message || 'Login failed');
+  const err = new Error(response.data?.message || 'Login failed');
+  err.status = response.status;
+  throw err;
 };
 
 export const registerUser = async (full_name, email, password) => {
   const response = await api.post('/auth/register', { full_name, email, password });
   if (response.data?.success) return response.data.data;
-  throw new Error(response.data?.message || 'Registration failed');
+  const err = new Error(response.data?.message || 'Registration failed');
+  err.status = response.status;
+  throw err;
 };
 
 export const checkHealth = async () => {
@@ -38,9 +69,12 @@ export const checkHealth = async () => {
   }
 };
 
-export const createAnalysisWorkspace = async (patientId = '', title = '') => {
+export const createAnalysisWorkspace = async (patientId, title = '') => {
+  if (!patientId) {
+    throw new Error('Please select a patient before creating an analysis workspace.');
+  }
   const formData = new FormData();
-  if (patientId) formData.append('patient_id', patientId);
+  formData.append('patient_id', patientId);
   if (title) formData.append('title', title);
 
   const response = await api.post('/analysis/create', formData);
@@ -51,6 +85,9 @@ export const createAnalysisWorkspace = async (patientId = '', title = '') => {
 };
 
 export const quickStartAnalysis = async (file, patientId) => {
+  if (!patientId) {
+    throw new Error('Please select a patient before uploading a medical report.');
+  }
   const formData = new FormData();
   formData.append('file', file);
   formData.append('patient_id', patientId);
@@ -124,6 +161,31 @@ export const fetchAnalysisResult = async (analysisId) => {
   throw new Error(response.data?.message || 'Analysis result is not ready');
 };
 
+export const fetchReviewQuestions = async (analysisId) => {
+  const response = await api.get(`/analysis/${analysisId}/review-questions`);
+  if (response.data?.success) return response.data.data;
+  throw new Error(response.data?.message || 'Failed to load review questions');
+};
+
+export const answerReviewQuestion = async (analysisId, questionId, { action, response, finding_id }) => {
+  const payload = { action, response: response || null, finding_id: finding_id || null };
+  const res = await api.post(`/analysis/${analysisId}/review-questions/${questionId}/answer`, payload);
+  if (res.data?.success) return res.data.data;
+  throw new Error(res.data?.message || 'Failed to submit review answer');
+};
+
+export const uploadFollowUpReport = async (analysisId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post(`/analysis/${analysisId}/follow-up`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  if (response.data?.success) return response.data.data;
+  throw new Error(response.data?.message || 'Failed to upload follow-up report');
+};
+
 export const fetchPatientTimeline = async (patientId) => {
   if (!patientId) return null;
   const response = await api.get(`/patients/${patientId}/timeline`);
@@ -156,4 +218,3 @@ export const clearChatHistory = async (patientId) => {
 };
 
 export default api;
-

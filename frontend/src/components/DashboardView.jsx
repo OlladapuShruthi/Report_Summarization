@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
+import { AuthContext } from '../context/AuthContext';
+import { PatientContext } from '../context/PatientContext';
 import {
   FileText,
   AlertTriangle,
@@ -42,7 +44,7 @@ function AddPatientModal({ onClose, onSubmit }) {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Rahul Sharma"
+              placeholder="e.g. Jane Doe"
               style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.9rem', boxSizing: 'border-box' }}
               required
               autoFocus
@@ -90,10 +92,6 @@ function getInitials(name = '') {
 }
 
 export function DashboardView({
-  currentUser,
-  patients = [],
-  activePatient,
-  sessions = [],
   onSelectPatient,
   onSelectView,
   onOpenUpload,
@@ -101,13 +99,15 @@ export function DashboardView({
   onCreatePatient,
 }) {
   const [showAddModal, setShowAddModal] = useState(false);
-  const userName = currentUser?.full_name?.split(' ')[0] || 'there';
+  const { authUser } = useContext(AuthContext);
+  const { patients, activePatient, sessions } = useContext(PatientContext);
+  const userName = authUser?.full_name?.split(' ')[0] || 'there';
 
-  // KPI stats derived from real data
-  const totalReports = sessions.length;
-  const abnormalCount = sessions.filter(s =>
-    (s.analysis_result?.risk_assessment?.risk_level || '').toLowerCase().includes('high') ||
-    (s.analysis_result?.key_findings?.abnormal_count > 0)
+  // Total reports & findings strictly derived from real data
+  const totalReports = sessions ? sessions.length : 0;
+  const abnormalCount = (sessions || []).filter(s =>
+    (s.risk_assessment?.risk_level || '').toLowerCase().includes('high') ||
+    ((s.abnormal_findings || []).length > 0)
   ).length;
 
   // Reorder patients: active first

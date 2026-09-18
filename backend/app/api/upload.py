@@ -4,7 +4,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from app.utils.file_handler import save_uploaded_file
 from app.database.mongodb import get_database
 from app.models.document import DocumentResponse
-from app.core.security import get_optional_user_id
+from app.core.security import get_current_user_id as get_optional_user_id
 
 router = APIRouter()
 

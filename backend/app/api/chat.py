@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from app.core.response import success_response, error_response
 from app.services.chat_service import ChatService
 from app.services.patient_service import PatientService
-from app.core.security import get_optional_user_id
+from app.core.security import get_current_user_id as get_optional_user_id
 
 router = APIRouter()
 chat_service = ChatService()

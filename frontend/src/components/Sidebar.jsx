@@ -1,16 +1,16 @@
 import React from 'react';
-import { 
-  LayoutDashboard, 
-  Users, 
-  FileText, 
-  BarChart3, 
-  MessageSquare, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Users,
+  FileText,
+  BarChart3,
+  MessageSquare,
+  Settings,
   LogOut,
   Home
 } from 'lucide-react';
 
-export function Sidebar({ currentView, onSelectView, activePatient }) {
+export function Sidebar({ currentView, onSelectView }) {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'patients', label: 'Patients', icon: Users },

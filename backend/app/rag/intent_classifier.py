@@ -7,14 +7,23 @@ class IntentType:
     REPORT_FACT_QUERY = "REPORT_FACT_QUERY"
     EXPLANATION_QUERY = "EXPLANATION_QUERY"
     REANALYSIS_REQUEST = "REANALYSIS_REQUEST"
+    LIFESTYLE_ADVICE = "LIFESTYLE_ADVICE"
     GENERAL_MEDICAL = "GENERAL_MEDICAL"
 
 
 class IntentClassifier:
     """Classifies user chat queries into medical RAG intent categories."""
 
+    # These patterns indicate a lifestyle/advice question that should NOT be treated
+    # as a history/trend query even if they mention "better" or "improve"
+    LIFESTYLE_PATTERNS = [
+        r"\b(diet|food|eat|meal|nutrition|tips|suggestion|advice|recommend|lifestyle|exercise|habit|supplement|vitamin)\b",
+        r"\b(what should i|how can i|how do i|should i)\b.{0,40}\b(do|eat|take|improve|get better|recover)\b",
+        r"\b(get better|feel better|recover|improve my health|what to do now)\b",
+    ]
+
     HISTORY_PATTERNS = [
-        r"\b(improved|improving|worse|worsening|better|progress|trend|changed|compared|previous|prior|over time|history|before|last report|earlier)\b",
+        r"\b(improved|improving|worse|worsening|progress|trend|changed|compared|previous|prior|over time|history|before|last report|earlier)\b",
         r"\b(has my|is my|did my).*(improved|changed|decreased|increased)\b",
     ]
 
@@ -36,6 +45,11 @@ class IntentClassifier:
         text = (query or "").strip().lower()
         if not text:
             return {"intent": IntentType.REPORT_FACT_QUERY, "confidence": 0.5, "matched_pattern": "empty_fallback"}
+
+        # 0. Lifestyle / Advice Intent (check FIRST to prevent false history matches on "better", "improve")
+        for pattern in self.LIFESTYLE_PATTERNS:
+            if re.search(pattern, text):
+                return {"intent": IntentType.LIFESTYLE_ADVICE, "confidence": 0.92, "matched_pattern": pattern}
 
         # 1. Re-analysis Intent
         for pattern in self.REANALYSIS_PATTERNS:

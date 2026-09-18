@@ -53,6 +53,9 @@ class LabResultModel(BaseModel):
             return value
 
         normalized = value.strip()
+        if not normalized:
+            return None
+            
         if not re.fullmatch(r"[A-Za-z0-9%./^+-]+(?:\s*[A-Za-z0-9%./^+-]+)*", normalized):
             raise ValueError("lab result unit contains invalid characters")
         return normalized

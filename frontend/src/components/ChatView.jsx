@@ -1,145 +1,320 @@
-import React, { useState } from 'react';
-import { Send, Mic, FileText, ChevronRight, Trash2 } from 'lucide-react';
-import { sendChatMessage } from '../services/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { Send, FileText, Trash2, MessageCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { sendChatMessage, fetchChatHistory, clearChatHistory } from '../services/api';
 
-export function ChatView({ activePatient }) {
-  const patientName = activePatient?.display_name || activePatient?.name || 'Rahul Sharma';
-  const patientId = activePatient?.patient_id || 'P001';
+export function ChatView({ activePatient, onSelectPatientView }) {
+  const patientName = activePatient?.display_name || activePatient?.name || null;
+  const patientId = activePatient?.patient_id || null;
 
   const [inputQuery, setInputQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [errorMsg, setErrorMsg] = useState(null);
 
-  const [messages, setMessages] = useState([
-    {
-      id: '1',
-      sender: 'user',
-      text: 'Is my hemoglobin improving?'
-    },
-    {
-      id: '2',
-      sender: 'bot',
-      text: `Yes, your hemoglobin has improved from 10.2 g/dL (Mar 2025) to 12.4 g/dL (May 2025). It is still slightly below the normal range (13.5 - 17.5 g/dL) but the trend is positive.`,
-      sources: [
-        { title: 'CBC Report – 26 May 2025 (Current)', type: 'Patient Report' },
-        { title: 'CBC Report – 02 May 2025', type: 'Historical Report' },
-        { title: 'CBC Report – 20 Mar 2025', type: 'Historical Report' },
-        { title: 'WHO - Hemoglobin Normal Range (Adults)', type: 'FAISS Knowledge' },
-        { title: 'MedlinePlus – Anemia Overview', type: 'FAISS Knowledge' }
-      ]
-    }
-  ]);
+  const activePatientIdRef = useRef(patientId);
+
+  // Load chat history whenever activePatient changes
+  useEffect(() => {
+    activePatientIdRef.current = patientId;
+    setMessages([]);
+    setErrorMsg(null);
+    setInputQuery('');
+
+    if (!patientId) return;
+
+    let isMounted = true;
+    const loadHistory = async () => {
+      setIsHistoryLoading(true);
+      try {
+        const history = await fetchChatHistory(patientId);
+        if (isMounted && activePatientIdRef.current === patientId) {
+          const formatted = history.map((h) => ({
+            id: h.message_id || h._id || String(Math.random()),
+            sender: 'bot',
+            userText: h.user_message,
+            botText: h.bot_response || h.response,
+            intent: h.intent || h.classified_intent,
+            sources: h.citations || [],
+            clarification: h.clarification_triggered,
+          }));
+          setMessages(formatted);
+        }
+      } catch (err) {
+        if (isMounted && activePatientIdRef.current === patientId) {
+          console.warn('Failed to load chat history:', err);
+        }
+      } finally {
+        if (isMounted) setIsHistoryLoading(false);
+      }
+    };
+
+    loadHistory();
+    return () => {
+      isMounted = false;
+    };
+  }, [patientId]);
+
+  // Gate: No active patient selected
+  if (!patientId) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', height: 'calc(100vh - 120px)' }}>
+        <div>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: '700', color: '#0f172a' }}>Ask Questions</h1>
+          <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Ask questions about a patient's medical history (RAG powered)</p>
+        </div>
+        <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+          <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#f1f5f9', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <MessageCircle size={32} />
+          </div>
+          <h3 style={{ fontSize: '1.15rem', fontWeight: '700', color: '#0f172a' }}>Please select a patient first</h3>
+          <p style={{ color: '#64748b', fontSize: '0.9rem', maxWidth: '420px', textAlign: 'center' }}>
+            Medical chat requires an active patient context to ensure strict data privacy and isolation.
+          </p>
+          {onSelectPatientView && (
+            <button className="btn-primary" onClick={onSelectPatientView} style={{ marginTop: '8px' }}>
+              Select Patient
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const handleSend = async (e) => {
     if (e) e.preventDefault();
-    if (!inputQuery.trim() || isLoading) return;
+    const query = inputQuery.trim();
+    if (!query || isLoading) return;
 
-    const userText = inputQuery;
     setInputQuery('');
-    setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'user', text: userText }]);
+    setErrorMsg(null);
+
+    const tempId = Date.now().toString();
+    const currentPatient = patientId;
+    setMessages((prev) => [
+      ...prev,
+      { id: tempId, sender: 'pending', userText: query, botText: null }
+    ]);
     setIsLoading(true);
 
     try {
-      const res = await sendChatMessage(patientId, userText);
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        sender: 'bot',
-        text: res.bot_response,
-        sources: res.citations || []
-      }]);
+      const res = await sendChatMessage(currentPatient, query);
+      // Ensure user hasn't switched to another patient while waiting
+      if (activePatientIdRef.current === currentPatient) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === tempId
+              ? {
+                  id: res.message_id || tempId,
+                  sender: 'bot',
+                  userText: query,
+                  botText: res.bot_response || res.response,
+                  intent: res.intent || res.classified_intent,
+                  sources: res.citations || [],
+                  clarification: res.clarification_triggered,
+                }
+              : msg
+          )
+        );
+      }
     } catch (err) {
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        sender: 'bot',
-        text: `Based on ${patientName}'s medical history retrieved via FAISS: Your recent lab parameters have been evaluated. Please consult your physician for guidance.`,
-        sources: [
-          { title: 'CBC Report – 26 May 2025 (Current)', type: 'Patient Report' },
-          { title: 'WHO Hemoglobin Guidelines', type: 'FAISS Knowledge' }
-        ]
-      }]);
+      if (activePatientIdRef.current === currentPatient) {
+        const errorText = err.response?.data?.message || err.message || 'Unable to process query.';
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === tempId
+              ? {
+                  id: tempId,
+                  sender: 'bot',
+                  userText: query,
+                  botText: `Unable to process question: ${errorText}`,
+                  isError: true,
+                }
+              : msg
+          )
+        );
+        setErrorMsg(errorText);
+      }
     } finally {
-      setIsLoading(false);
+      if (activePatientIdRef.current === currentPatient) {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  const handleClearHistory = async () => {
+    if (!patientId) return;
+    try {
+      await clearChatHistory(patientId);
+      setMessages([]);
+    } catch (err) {
+      console.warn('Failed to clear chat history:', err);
     }
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', height: 'calc(100vh - 120px)' }}>
-      {/* Header matching Wireframe Box 12 */}
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: '700', color: '#0f172a' }}>Chat with AI</h1>
-          <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Ask questions using patient history (RAG powered)</p>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: '700', color: '#0f172a' }}>Ask Questions</h1>
+          <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Grounded medical assistant for {patientName}</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span className="badge badge-status-improving" style={{ padding: '6px 14px', fontSize: '0.88rem' }}>
-            Patient: {patientName}
+            Current Patient: {patientName}
           </span>
-          <button className="btn-secondary" style={{ padding: '6px 10px' }} onClick={() => setMessages([])}>
-            <Trash2 size={16} color="#ef4444" />
-          </button>
+          {messages.length > 0 && (
+            <button className="btn-secondary" style={{ padding: '6px 10px' }} onClick={handleClearHistory} title="Clear conversation history">
+              <Trash2 size={16} color="#ef4444" />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Main Chat Messages View */}
+      {/* Main Chat Area */}
       <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px', overflowY: 'auto' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: msg.sender === 'user' ? 'flex-end' : 'flex-start'
-              }}
-            >
-              {/* Message Bubble */}
-              <div
-                style={{
-                  maxWidth: '75%',
-                  padding: '14px 18px',
-                  borderRadius: msg.sender === 'user' ? '18px 18px 2px 18px' : '18px 18px 18px 2px',
-                  backgroundColor: msg.sender === 'user' ? '#2563eb' : '#f1f5f9',
-                  color: msg.sender === 'user' ? '#ffffff' : '#0f172a',
-                  fontSize: '0.95rem',
-                  lineHeight: '1.5'
-                }}
-              >
-                {msg.text}
-              </div>
-
-              {/* RAG Citations Sources Box matching Wireframe Box 13 */}
-              {msg.sender === 'bot' && msg.sources && msg.sources.length > 0 && (
-                <div style={{ marginTop: '12px', width: '100%', maxWidth: '520px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
-                  <div style={{ fontSize: '0.82rem', fontWeight: '700', color: '#0f172a', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <FileText size={14} color="#2563eb" /> Sources Used (RAG Citations)
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {msg.sources.map((src, sIdx) => (
-                      <div key={sIdx} style={{ fontSize: '0.8rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span>•</span>
-                        <span style={{ fontWeight: '500' }}>{src.title}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: '#94a3b8' }}>{src.type}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+          {isHistoryLoading ? (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+              <RefreshCw size={24} className="spin" />
+              <span style={{ marginLeft: '8px' }}>Loading conversation history...</span>
             </div>
-          ))}
+          ) : messages.length === 0 ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', color: '#64748b' }}>
+              <MessageCircle size={40} color="#cbd5e1" />
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '600', color: '#334155' }}>No conversation history</h3>
+              <p style={{ fontSize: '0.88rem', maxWidth: '420px', textAlign: 'center' }}>
+                Ask a question about {patientName}'s medical reports or lab results. Grounded AI answers strictly from recorded clinical evidence.
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px', justifyContent: 'center' }}>
+                {[
+                  'What were the key findings in the latest report?',
+                  'Are there any abnormal values?',
+                  'How has health changed over time?',
+                ].map((suggestion, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setInputQuery(suggestion)}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '20px',
+                      border: '1px solid #e2e8f0',
+                      backgroundColor: '#f8fafc',
+                      fontSize: '0.82rem',
+                      color: '#475569',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            messages.map((msg) => (
+              <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {/* User Message */}
+                {msg.userText && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <div
+                      style={{
+                        maxWidth: '75%',
+                        padding: '12px 18px',
+                        borderRadius: '18px 18px 2px 18px',
+                        backgroundColor: '#2563eb',
+                        color: '#ffffff',
+                        fontSize: '0.95rem',
+                        lineHeight: '1.5'
+                      }}
+                    >
+                      {msg.userText}
+                    </div>
+                  </div>
+                )}
+
+                {/* Bot Response */}
+                {msg.sender === 'pending' ? (
+                  <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                    <div
+                      style={{
+                        maxWidth: '75%',
+                        padding: '12px 18px',
+                        borderRadius: '18px 18px 18px 2px',
+                        backgroundColor: '#f1f5f9',
+                        color: '#64748b',
+                        fontSize: '0.9rem',
+                        fontStyle: 'italic',
+                      }}
+                    >
+                      Thinking and searching medical records...
+                    </div>
+                  </div>
+                ) : msg.botText ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', maxWidth: '80%' }}>
+                    <div
+                      style={{
+                        padding: '14px 18px',
+                        borderRadius: '18px 18px 18px 2px',
+                        backgroundColor: msg.isError ? '#fef2f2' : '#f1f5f9',
+                        color: msg.isError ? '#991b1b' : '#0f172a',
+                        border: msg.isError ? '1px solid #fecaca' : 'none',
+                        fontSize: '0.95rem',
+                        lineHeight: '1.6',
+                        whiteSpace: 'pre-line'
+                      }}
+                    >
+                      {msg.intent && (
+                        <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>
+                          Intent: {msg.intent.replaceAll('_', ' ')}
+                        </div>
+                      )}
+                      {msg.botText}
+                    </div>
+
+                    {/* RAG Citations */}
+                    {msg.sources && msg.sources.length > 0 && (
+                      <div style={{ marginTop: '8px', width: '100%', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 14px' }}>
+                        <div style={{ fontSize: '0.78rem', fontWeight: '700', color: '#0f172a', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <FileText size={13} color="#2563eb" /> Sources / Citations
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {msg.sources.map((src, sIdx) => (
+                            <div key={sIdx} style={{ fontSize: '0.78rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>•</span>
+                              <span style={{ fontWeight: '500' }}>{src.title}</span>
+                              <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: '#94a3b8' }}>{src.type}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ))
+          )}
         </div>
 
-        {/* Input Bar matching Wireframe Box 12 */}
-        <form onSubmit={handleSend} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
+        {/* Error message */}
+        {errorMsg && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#b91c1c', fontSize: '0.85rem', marginTop: '12px' }}>
+            <AlertCircle size={16} />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        {/* Input Bar */}
+        <form onSubmit={handleSend} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
           <input
             type="text"
             value={inputQuery}
             onChange={(e) => setInputQuery(e.target.value)}
-            placeholder="Type your question..."
+            placeholder={`Ask about ${patientName}'s medical data...`}
             style={{ flex: 1, padding: '12px 18px', borderRadius: '99px', border: '1px solid #cbd5e1', fontSize: '0.95rem' }}
+            disabled={isLoading}
           />
-          <button type="button" className="btn-secondary" style={{ borderRadius: '50%', width: '42px', height: '42px', padding: 0, justifyContent: 'center' }}>
-            <Mic size={18} color="#64748b" />
-          </button>
-          <button type="submit" className="btn-primary" style={{ borderRadius: '50%', width: '42px', height: '42px', padding: 0, justifyContent: 'center' }} disabled={isLoading}>
+          <button type="submit" className="btn-primary" style={{ borderRadius: '50%', width: '42px', height: '42px', padding: 0, justifyContent: 'center' }} disabled={isLoading || !inputQuery.trim()}>
             <Send size={18} />
           </button>
         </form>

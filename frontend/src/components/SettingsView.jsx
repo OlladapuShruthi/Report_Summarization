@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { User, Globe, Bell, Shield, Edit3 } from 'lucide-react';
 
-export function SettingsView({ activePatient }) {
+export function SettingsView({ currentUser, activePatient }) {
   const [activeTab, setActiveTab] = useState('Profile');
-  const [name, setName] = useState(activePatient?.display_name || activePatient?.name || 'Rahul Sharma');
-  const [email, setEmail] = useState('rahul.sharma@gmail.com');
-  const [phone, setPhone] = useState('+91 98765 43210');
+  const [name, setName] = useState(currentUser?.full_name || 'User Account');
+  const [email, setEmail] = useState(currentUser?.email || '');
+  const [phone, setPhone] = useState('');
+
+  const initials = (name || 'U').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() || 'U';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -52,7 +54,7 @@ export function SettingsView({ activePatient }) {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#2563eb', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: '700' }}>
-              RS
+              {initials}
             </div>
             <div>
               <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#0f172a' }}>{name}</h2>

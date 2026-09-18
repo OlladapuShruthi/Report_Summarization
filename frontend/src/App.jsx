@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 
@@ -18,6 +18,7 @@ import ChatView from './components/ChatView';
 import SettingsView from './components/SettingsView';
 import ExportModal from './components/ExportModal';
 import LogoutView from './components/LogoutView';
+import ReviewRequiredView from './components/ReviewRequiredView';
 
 import {
   checkHealth,
@@ -27,190 +28,223 @@ import {
   fetchAnalysisResult,
   createPatient,
   parseAnalysisSession,
-  analyzeAnalysisSession
+  analyzeAnalysisSession,
 } from './services/api';
 
-// ─── Helper: restore persisted session ─────────────────────────────────────
-function getStoredUser() {
-  try {
-    const raw = localStorage.getItem('med_user');
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
+import { AuthContext } from './context/AuthContext';
+import { PatientContext } from './context/PatientContext';
 
 export function App() {
-  // ─── Auth state ───────────────────────────────────────────────────────────────
-  const [currentUser, setCurrentUser] = useState(getStoredUser); // null = not logged in
+  // Auth context
+  const { authUser, logout } = useContext(AuthContext);
 
-  // ─── Navigation state ─────────────────────────────────────────────────────────
-  // If user is already logged in (session restored), skip to dashboard
-  const [currentView, setCurrentView] = useState(() => {
-    return getStoredUser() ? 'dashboard' : 'landing';
-  });
-  // Track auth mode for when we go to the auth page
+  // Patient context
+  const {
+    patients,
+    activePatient,
+    selectedPatientId,
+    sessions,
+    timeline,
+    loadPatients,
+    addPatient,
+    selectPatient,
+    loadTimeline,
+    loadSessions,
+    resetAll,
+    setPatients,
+    setActivePatient,
+    setSelectedPatientId,
+    setSessions,
+    setTimeline,
+  } = useContext(PatientContext);
+
+  // Listen for global 401 token expiry to cleanly wipe patient state & route to login
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      resetAll();
+      logout();
+      setCurrentView('auth');
+    };
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, [logout, resetAll]);
+
+  // Navigation state
+  const [currentView, setCurrentView] = useState(() => (authUser ? 'dashboard' : 'landing'));
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
-
-  // ─── Application Data state ───────────────────────────────────────────────────
   const [healthStatus, setHealthStatus] = useState(null);
-  const [patients, setPatients] = useState([]);
-  const [selectedPatientId, setSelectedPatientId] = useState('');
-  const [activePatient, setActivePatient] = useState(null);
-  const [sessions, setSessions] = useState([]);
-  const [timeline, setTimeline] = useState(null);
-  const [activeAnalysisResult, setActiveAnalysisResult] = useState(null);
 
-  // ─── Modal state ──────────────────────────────────────────────────────────────
+  // Modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [activeParseId, setActiveParseId] = useState(null);
   const [activeAnalyzeId, setActiveAnalyzeId] = useState(null);
+  const [activeAnalysisResult, setActiveAnalysisResult] = useState(null);
 
-  // ─── Data fetching ────────────────────────────────────────────────────────────
-  const loadData = async () => {
-    if (!currentUser) return; // Don't fetch unless logged in
-    try {
-      const health = await checkHealth();
-      setHealthStatus(health);
-
-      // Pass user_id to scope patients to this account
-      const fetchedPatients = await fetchPatients(currentUser.user_id);
-      setPatients(fetchedPatients);
-
-      // Auto-select first patient if none selected yet
-      if (fetchedPatients.length > 0 && !selectedPatientId) {
-        setSelectedPatientId(fetchedPatients[0].patient_id);
-        setActivePatient(fetchedPatients[0]);
-      }
-
-      if (selectedPatientId) {
-        const fetchedSessions = await fetchAnalysisSessions(selectedPatientId);
-        setSessions(fetchedSessions);
-      }
-    } catch (error) {
-      console.warn('Data load error (backend may be offline):', error);
-    }
-  };
-
-  // Re-fetch whenever user logs in or selected patient changes
+  // Load health and patient data when authenticated
   useEffect(() => {
+    const loadData = async () => {
+      if (!authUser) return;
+      try {
+        const health = await checkHealth();
+        setHealthStatus(health);
+        const fetchedPatients = await loadPatients(authUser.user_id);
+        // Auto-select first patient if none selected
+        if (fetchedPatients.length > 0 && !selectedPatientId) {
+          selectPatient(fetchedPatients[0].patient_id);
+        }
+        if (selectedPatientId) {
+          const fetchedSessions = await loadSessions(selectedPatientId);
+          setSessions(fetchedSessions);
+        }
+      } catch (error) {
+        console.warn('Data load error (backend may be offline):', error);
+      }
+    };
     loadData();
-    if (!currentUser) return;
-    const interval = setInterval(loadData, 15000);
-    return () => clearInterval(interval);
-  }, [currentUser, selectedPatientId]);
-
-  // Sync active patient profile when selection changes
-  useEffect(() => {
-    if (selectedPatientId && patients.length > 0) {
-      const found = patients.find((p) => p.patient_id === selectedPatientId);
-      if (found) setActivePatient(found);
+    if (authUser) {
+      const interval = setInterval(loadData, 15000);
+      return () => clearInterval(interval);
     }
-  }, [selectedPatientId, patients]);
+  }, [authUser, selectedPatientId]);
 
-  // Load timeline when active patient changes
+  // Sync timeline when patient changes
   useEffect(() => {
     if (!selectedPatientId) return;
-    const loadTimeline = async () => {
+    const load = async () => {
       try {
-        const data = await fetchPatientTimeline(selectedPatientId);
+        const data = await loadTimeline(selectedPatientId);
         setTimeline(data);
       } catch (err) {
         console.warn('Timeline load error:', err);
       }
     };
-    loadTimeline();
-  }, [selectedPatientId, sessions]);
+    load();
+  }, [selectedPatientId]);
 
-  // ─── Auth handlers ────────────────────────────────────────────────────────────
-  const handleLoginSuccess = (user) => {
-    setCurrentUser(user);
-    // Reset patient state for fresh account
-    setPatients([]);
-    setSelectedPatientId('');
-    setActivePatient(null);
-    setSessions([]);
-    setCurrentView('dashboard');
-  };
+  // Store the most recent upload session so we can fetch its result after processing
+  const [latestUploadSession, setLatestUploadSession] = useState(null);
+  // Track whether view change came from browser back/forward to avoid re-pushing
+  const isPopStateNav = useRef(false);
 
+  // Sync navigation history with browser back/forward
+  useEffect(() => {
+    if (isPopStateNav.current) {
+      // This view change came from browser back/forward — don't push again
+      isPopStateNav.current = false;
+      return;
+    }
+    // Use replaceState for transient views (processing) to avoid polluting history
+    const transientViews = ['processing'];
+    if (transientViews.includes(currentView)) {
+      window.history.replaceState({ view: currentView }, '');
+    } else {
+      window.history.pushState({ view: currentView }, '');
+    }
+  }, [currentView]);
+
+  useEffect(() => {
+    const onPopState = (e) => {
+      isPopStateNav.current = true;
+      if (e.state && e.state.view) {
+        setCurrentView(e.state.view);
+      } else {
+        setCurrentView(authUser ? 'dashboard' : 'landing');
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [authUser]);
+
+
+  // Handlers
   const handleLogout = () => {
-    localStorage.removeItem('med_user');
-    setCurrentUser(null);
-    setPatients([]);
-    setSelectedPatientId('');
-    setActivePatient(null);
-    setSessions([]);
-    setCurrentView('logout');
+    resetAll();
+    logout();
+    setCurrentView('landing');
   };
 
-  // ─── Patient handlers ─────────────────────────────────────────────────────────
-  const handleSelectPatient = (patientId) => {
-    setSelectedPatientId(patientId);
-    const found = patients.find((p) => p.patient_id === patientId);
-    if (found) setActivePatient(found);
-  };
-
-  const handlePatientCreated = async (newPatientData) => {
+  // Create-patient handler (used by DashboardView & PatientsView)
+  const handlePatientCreated = async (patientData) => {
     try {
-      // Attach the current user's ID so it's scoped to this account
-      const created = await createPatient({ ...newPatientData, user_id: currentUser?.user_id });
-      setPatients((current) => [created, ...current]);
-      setSelectedPatientId(created.patient_id);
-      setActivePatient(created);
+      const created = await addPatient(patientData);
+      if (created?.patient_id) {
+        selectPatient(created.patient_id);
+      }
+      return created;
     } catch (err) {
-      console.error('Create patient failed:', err);
-      const mockCreated = {
-        ...newPatientData,
-        patient_id: `P_${Date.now()}`,
-        user_id: currentUser?.user_id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      setPatients((current) => [mockCreated, ...current]);
-      setSelectedPatientId(mockCreated.patient_id);
-      setActivePatient(mockCreated);
+      console.error('Failed to create patient:', err);
+      throw err;
     }
   };
+
+  // Handler for successful upload, store session for later result fetching
+  const handleUploadSuccess = (session) => {
+    setLatestUploadSession(session);
+    // After upload, navigate to processing view
+    setCurrentView('processing');
+  };
+
+  // Called when processing view signals completion
+  const handleCompleteProcessing = async (result) => {
+    if (result) {
+      setActiveAnalysisResult(result);
+    }
+    if (selectedPatientId) {
+      loadSessions(selectedPatientId).then(setSessions).catch(console.warn);
+    }
+    setCurrentView('results-overview');
+  };
+
+  const handleReviewRequired = async (analysisId) => {
+    try {
+      const resData = await fetchAnalysisResult(analysisId);
+      setActiveAnalysisResult(resData);
+    } catch (err) {
+      console.warn('Failed to fetch analysis result for review:', err);
+    }
+    if (selectedPatientId) {
+      loadSessions(selectedPatientId).then(setSessions).catch(console.warn);
+    }
+    setCurrentView('review');
+  };
+
+  // Existing upload success handling in modal
+  // Updated prop passed below
 
   const handleParse = async (analysisId) => {
     setActiveParseId(analysisId);
+    setLatestUploadSession({ analysis_id: analysisId });
     setCurrentView('processing');
-    try {
-      await parseAnalysisSession(analysisId);
-      await loadData();
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setActiveParseId(null);
-    }
   };
 
   const handleAnalyze = async (analysisId) => {
     setActiveAnalyzeId(analysisId);
+    setLatestUploadSession({ analysis_id: analysisId });
     setCurrentView('processing');
-    try {
-      await analyzeAnalysisSession(analysisId);
-      await loadData();
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setActiveAnalyzeId(null);
-    }
   };
 
   const handleViewResult = async (analysisId) => {
     try {
       const resData = await fetchAnalysisResult(analysisId);
       setActiveAnalysisResult(resData);
-      setCurrentView('results-overview');
     } catch (err) {
       setActiveAnalysisResult(null);
-      setCurrentView('results-overview');
     }
+    setCurrentView('results-overview');
   };
 
-  // ─── Full-screen pages (no sidebar/navbar) ────────────────────────────────────
+  // Full-screen pages
+  // Sync currentView with auth state
+  useEffect(() => {
+    if (!authUser) {
+      // User logged out → send to landing
+      setCurrentView('landing');
+    } else if (currentView === 'auth' || currentView === 'landing') {
+      // User just logged in but view is still auth/landing → send to dashboard
+      setCurrentView('dashboard');
+    }
+  }, [authUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (currentView === 'landing') {
     return (
@@ -226,27 +260,22 @@ export function App() {
     return (
       <AuthView
         initialMode={authMode}
-        onLoginSuccess={handleLoginSuccess}
+        onLoginSuccess={(user) => {
+          // AuthContext will already have set authUser via login function, but we also need to update local state
+          // Here we simply rely on authUser from context; ensure view switches
+          setCurrentView('dashboard');
+        }}
         onBackToHome={() => setCurrentView('landing')}
       />
     );
   }
 
-  if (currentView === 'logout') {
-    return (
-      <LogoutView
-        onLoginAgain={() => { setAuthMode('login'); setCurrentView('auth'); }}
-        onBackHome={() => setCurrentView('landing')}
-      />
-    );
-  }
-
-  // ─── Main app shell (navbar + sidebar + content) ──────────────────────────────
+  // Main app shell
   return (
     <div className="app-layout">
       <Navbar
         healthStatus={healthStatus}
-        currentUser={currentUser}
+        currentUser={authUser}
         activePatient={activePatient}
         onSelectView={setCurrentView}
         onOpenUpload={() => setShowUploadModal(true)}
@@ -257,17 +286,16 @@ export function App() {
         <Sidebar
           currentView={currentView}
           onSelectView={setCurrentView}
-          activePatient={activePatient}
         />
 
         <main className="app-content-viewport">
           {currentView === 'dashboard' && (
             <DashboardView
-              currentUser={currentUser}
+              currentUser={authUser}
               patients={patients}
               activePatient={activePatient}
               sessions={sessions}
-              onSelectPatient={handleSelectPatient}
+              onSelectPatient={selectPatient}
               onSelectView={setCurrentView}
               onOpenUpload={() => setShowUploadModal(true)}
               onViewResult={handleViewResult}
@@ -278,32 +306,36 @@ export function App() {
           {currentView === 'patients' && (
             <PatientsView
               patients={patients}
-              activePatient={activePatient}
-              onSelectPatient={handleSelectPatient}
+              activePatient={activePatient?.patient_id || activePatient}
+              onSelectPatient={selectPatient}
               onCreatePatient={handlePatientCreated}
               onSelectView={setCurrentView}
             />
           )}
 
           {currentView === 'reports' && (
-            <ReportsView
-              sessions={sessions}
-              activePatient={activePatient}
-              activeParseId={activeParseId}
-              activeAnalyzeId={activeAnalyzeId}
-              onOpenUpload={() => setShowUploadModal(true)}
-              onParse={handleParse}
-              onAnalyze={handleAnalyze}
-              onViewResult={handleViewResult}
-              onSelectView={setCurrentView}
-            />
+            selectedPatientId ? (
+              <ReportsView
+                sessions={sessions}
+                activePatient={activePatient}
+                onOpenUpload={() => setShowUploadModal(true)}
+                onParse={handleParse}
+                onAnalyze={handleAnalyze}
+                onViewResult={handleViewResult}
+                onSelectView={setCurrentView}
+              />
+            ) : (
+              <PatientsView
+                patients={patients}
+                activePatient={activePatient}
+                onSelectPatient={(id) => { selectPatient(id); setCurrentView('reports'); }}
+                onCreatePatient={handlePatientCreated}
+                onSelectView={setCurrentView}
+              />
+            )
           )}
 
-          {currentView === 'processing' && (
-            <ProcessingView
-              onComplete={() => setCurrentView('results-overview')}
-            />
-          )}
+          {/* ProcessingView is rendered outside <main> below to overlay correctly */}
 
           {currentView === 'results-overview' && (
             <ResultsOverviewView
@@ -312,6 +344,41 @@ export function App() {
               onViewFullDetails={() => setCurrentView('results-detail')}
               onOpenExport={() => setShowExportModal(true)}
               onAskAI={() => setCurrentView('chat')}
+              onSelectReview={() => setCurrentView('review')}
+            />
+          )}
+
+          {currentView === 'review' && (
+            <ReviewRequiredView
+              activePatient={activePatient}
+              activeAnalysisId={activeAnalysisResult?.analysis_id}
+              reviewResult={activeAnalysisResult}
+              onBack={() => setCurrentView('results-overview')}
+              onReviewAnswered={async () => {
+                if (activeAnalysisResult?.analysis_id) {
+                  try {
+                    const updated = await fetchAnalysisResult(activeAnalysisResult.analysis_id);
+                    setActiveAnalysisResult(updated);
+                  } catch (e) {
+                    console.warn(e);
+                  }
+                }
+                if (selectedPatientId) {
+                  const refreshed = await loadSessions(selectedPatientId);
+                  setSessions(refreshed);
+                }
+                setCurrentView('results-overview');
+              }}
+              onFollowUpUploaded={async (followUpResult) => {
+                if (selectedPatientId) {
+                  const refreshed = await loadSessions(selectedPatientId);
+                  setSessions(refreshed);
+                }
+                if (followUpResult?.analysis_id) {
+                  setActiveAnalysisResult(followUpResult);
+                }
+                setCurrentView('results-overview');
+              }}
             />
           )}
 
@@ -329,28 +396,54 @@ export function App() {
           )}
 
           {currentView === 'findings' && (
-            <FindingsStatusView
-              result={activeAnalysisResult}
-            />
+            <FindingsStatusView result={activeAnalysisResult} />
           )}
 
           {currentView === 'timeline' && (
-            <TimelineView
-              timeline={timeline}
-              activePatient={activePatient}
-              onViewResult={handleViewResult}
-            />
+            selectedPatientId ? (
+              <TimelineView
+                timeline={timeline}
+                activePatient={activePatient}
+                onViewResult={handleViewResult}
+              />
+            ) : (
+              <PatientsView
+                patients={patients}
+                activePatient={activePatient}
+                onSelectPatient={(id) => { selectPatient(id); setCurrentView('timeline'); }}
+                onCreatePatient={handlePatientCreated}
+                onSelectView={setCurrentView}
+              />
+            )
           )}
 
           {currentView === 'chat' && (
-            <ChatView
-              activePatient={activePatient}
+            selectedPatientId ? (
+              <ChatView activePatient={activePatient} />
+            ) : (
+              <PatientsView
+                patients={patients}
+                activePatient={activePatient}
+                onSelectPatient={(id) => { selectPatient(id); setCurrentView('chat'); }}
+                onCreatePatient={handlePatientCreated}
+                onSelectView={setCurrentView}
+              />
+            )
+          )}
+
+          {currentView === 'processing' && (
+            <ProcessingView 
+              analysisId={latestUploadSession?.analysis_id || latestUploadSession?.session_id || activeParseId || activeAnalyzeId}
+              patientName={activePatient?.display_name || activePatient?.name}
+              onComplete={handleCompleteProcessing} 
+              onReviewRequired={handleReviewRequired}
+              onError={(err) => console.error("Pipeline Error:", err)}
             />
           )}
 
           {currentView === 'settings' && (
             <SettingsView
-              currentUser={currentUser}
+              currentUser={authUser}
               activePatient={activePatient}
               onLogout={handleLogout}
             />
@@ -358,24 +451,16 @@ export function App() {
         </main>
       </div>
 
-      {/* Global Modals */}
       {showUploadModal && (
         <UploadModal
           activePatient={activePatient}
           onClose={() => setShowUploadModal(false)}
-          onUploadSuccess={() => {
-            loadData();
-            setShowUploadModal(false);
-            setCurrentView('processing');
-          }}
-          onSelectPatientView={() => setCurrentView('patients')}
+          onUploadSuccess={handleUploadSuccess}
         />
       )}
 
       {showExportModal && (
-        <ExportModal
-          onClose={() => setShowExportModal(false)}
-        />
+        <ExportModal onClose={() => setShowExportModal(false)} />
       )}
     </div>
   );

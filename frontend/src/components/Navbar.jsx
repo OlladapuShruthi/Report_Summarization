@@ -1,12 +1,16 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { Activity, User, PlusCircle, LogOut } from 'lucide-react';
+import { AuthContext } from '../context/AuthContext';
+import { PatientContext } from '../context/PatientContext';
 
 function getInitials(name = '') {
   return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?';
 }
 
-export function Navbar({ healthStatus, currentUser, activePatient, onSelectView, onOpenUpload, onLogout }) {
-  const initials = currentUser ? getInitials(currentUser.full_name) : '?';
+export function Navbar({ healthStatus, onSelectView, onOpenUpload }) {
+  const { authUser, logout } = useContext(AuthContext);
+  const { activePatient } = useContext(PatientContext);
+  const initials = authUser ? getInitials(authUser.full_name) : '?';
 
   return (
     <header className="navbar-header">
@@ -39,11 +43,11 @@ export function Navbar({ healthStatus, currentUser, activePatient, onSelectView,
         </button>
 
         {/* Logout */}
-        {currentUser && (
+        {authUser && (
           <button
             className="btn-secondary"
             style={{ padding: '8px 12px', color: '#64748b' }}
-            onClick={onLogout}
+            onClick={logout}
             title="Logout"
           >
             <LogOut size={16} />

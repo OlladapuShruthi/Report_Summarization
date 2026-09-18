@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Q
 from app.services.analysis_service import AnalysisService
 from app.services.patient_service import PatientService
 from app.models.analysis_session import ReviewAnswerRequest
-from app.core.security import get_optional_user_id
+from app.core.security import get_current_user_id as get_optional_user_id
 from app.core.response import success_response, error_response
 from app.core.logger import logger
 
